@@ -1,0 +1,207 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "cjs"
+  previewFeatures = ["typedSql"]
+}
+
+generator kysely {
+  provider     = "prisma-kysely"
+  output       = "../src/db/auto-generated"
+  fileName     = "types.ts"
+  enumFileName = "enums.ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model provider {
+  id                String @id
+  num_of_deals      Int
+  total_deal_size   BigInt
+  num_of_clients    Int
+  last_deal_height  Int
+  first_deal_height Int    @default(0)
+}
+
+model client_provider_distribution {
+  client           String
+  provider         String
+  total_deal_size  BigInt
+  unique_data_size BigInt
+  claims_count     BigInt?
+
+  @@id([client, provider])
+  @@index([provider])
+}
+
+model ipni_publisher_advertisement {
+  id             String  @id
+  previous_id    String? @unique
+  publisher_id   String
+  context_id     String
+  entries_number BigInt
+  is_rm          Boolean
+
+  @@index([publisher_id])
+}
+
+model ipni_reporting_daily {
+  date          DateTime @id @default(now())
+  ok            Int
+  not_reporting Int
+  misreporting  Int
+  total         Int
+}
+
+model po_rep_indexer_run {
+  date        DateTime
+  chainId     BigInt
+  runner      String
+  version     Int
+  blockStart  BigInt
+  blockEnd    BigInt
+  eventsCount Int
+
+  @@id([date, chainId, runner, version])
+}
+
+// Defaults are there to insert providers based on registration event which
+// contains only the ID. Rest of the field will get updated based on other events
+model po_rep_storage_provider {
+  providerId             BigInt                                @id
+  organization           String                                @default("0x0000000000000000000000000000000000000000")
+  payee                  String                                @default("0x0000000000000000000000000000000000000000")
+  paused                 Boolean                               @default(false)
+  blocked                Boolean                               @default(false)
+  availableBytes         BigInt                                @default(0)
+  committedBytes         BigInt                                @default(0)
+  pendingBytes           BigInt                                @default(0)
+  pricePerSectorPerMonth Decimal                               @default(0) @db.Decimal(78, 0)
+  minDealDurationDays    Int                                   @default(0)
+  maxDealDurationDays    Int                                   @default(0)
+  registeredAtBlock      BigInt
+  deals                  po_rep_deal[]
+  offers                 po_rep_offer[]
+}
+
+model po_rep_offer {
+  offerId                 BigInt                  @id
+  providerId              BigInt
+  active                  Boolean                 @default(true)
+  minSizeBytes            BigInt
+  maxSizeBytes            BigInt
+  minDurationEpochs       BigInt
+  maxDurationEpochs       BigInt
+  retrievabilityBps       Int                     @default(0)
+  bandwidthBytesPerSecond BigInt                  @default(0)
+  latencyMs               Int                     @default(0)
+  indexingPct             Int                     @default(0)
+  createdAtBlock          BigInt
+  provider                po_rep_storage_provider @relation(fields: [providerId], references: [providerId])
+  payments                po_rep_offer_payment[]
+  deals                   po_rep_deal[]
+}
+
+model po_rep_offer_payment {
+  offerId               BigInt
+  token                 String
+  active                Boolean      @default(true)
+  pricePer32GiBPerMonth Decimal      @db.Decimal(78, 0)
+  offer                 po_rep_offer @relation(fields: [offerId], references: [offerId])
+
+  @@id([offerId, token])
+}
+
+model po_rep_deal {
+  dealId           BigInt                     @id
+  providerId       BigInt
+  offerId          BigInt
+  client           String
+  state            PoRepDealState
+  manifestLocation String
+  totalDealSize    BigInt
+  proposedAtBlock  BigInt
+  railId           BigInt?
+  requirements     po_rep_deal_requirements?
+  terms            po_rep_deal_terms?
+  provider         po_rep_storage_provider    @relation(fields: [providerId], references: [providerId])
+  offer            po_rep_offer               @relation(fields: [offerId], references: [offerId])
+  stateChanges     po_rep_deal_state_change[]
+}
+
+model po_rep_deal_requirements {
+  dealId                  BigInt      @id
+  retrievabilityBps       Int
+  bandwidthBytesPerSecond BigInt
+  latencyMs               Int
+  indexingPct             Int
+  deal                    po_rep_deal @relation(fields: [dealId], references: [dealId])
+}
+
+model po_rep_deal_terms {
+  deal_id                    BigInt      @id
+  deal_size_bytes            BigInt
+  price_per_sector_per_month Decimal     @db.Decimal(78, 0)
+  duration_days              BigInt
+  deal                       po_rep_deal @relation(fields: [deal_id], references: [dealId])
+}
+
+model po_rep_deal_state_change {
+  deal_id          BigInt
+  state            PoRepDealState
+  changed_at_block BigInt
+  deal             po_rep_deal    @relation(fields: [deal_id], references: [dealId])
+
+  @@id([deal_id, state]) // Each deal gets to the next state only once
+  @@index([deal_id, state, changed_at_block(sort: Desc)])
+}
+
+model filecoin_pay_rail {
+  railId              BigInt  @id
+  token               String
+  from                String
+  to                  String
+  operator            String
+  validator           String
+  paymentRate         Decimal @default(0) @db.Decimal(78, 0)
+  lockupPeriod        BigInt  @default(0)
+  lockupFixed         Decimal @default(0) @db.Decimal(78, 0)
+  settledUpTo         BigInt
+  endEpoch            BigInt  @default(0) // 0 means rail is not terminated
+  commissionRateBps   Int
+  serviceFeeRecipient String
+  finalized           Boolean @default(false)
+  createdAtBlock      BigInt
+  activatedAtBlock    BigInt  @default(0)
+
+  @@index([createdAtBlock(sort: Desc)])
+}
+
+model filecoin_pay_payment {
+  id                 String  @id @default(uuid()) @db.Uuid
+  // No foreign key constraints (relations) on rail id because we don't index 
+  // from genesis block. Some registered payments may relate to rails for
+  // which no entry exists in "filecoin_pay_rail" table because creation event
+  // happened on lower block height that the one we index from.
+  railId             BigInt
+  totalAmount        Decimal @db.Decimal(78, 0)
+  netPayeeAmount     Decimal @db.Decimal(78, 0)
+  operatorCommission Decimal @db.Decimal(78, 0)
+  networkFee         Decimal @db.Decimal(78, 0)
+  createdAtBlock     BigInt
+  oneTime            Boolean
+
+  @@index([railId, createdAtBlock(sort: Desc)])
+}
+
+enum PoRepDealState {
+  PROPOSED
+  ACCEPTED
+  ACTIVE
+  FINALIZED
+  REJECTED
+  EXPIRED
+  EARLY_TERMINATED
+}

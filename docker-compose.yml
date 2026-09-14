@@ -1,0 +1,31 @@
+services:
+  database:
+    image: postgres:18
+    restart: unless-stopped
+    volumes:
+      - postgres18_data:/var/lib/postgresql
+    environment:
+      - PGUSER=postgres
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "8099:5432"
+    healthcheck:
+      test: "pg_isready"
+      interval: 30s
+      timeout: 5s
+      retries: 2
+
+  autoheal:
+    restart: always
+    image: willfarrell/autoheal
+    environment:
+      - AUTOHEAL_START_PERIOD=30
+      - AUTOHEAL_INTERVAL=30
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  postgres18_data:
+    driver: local
