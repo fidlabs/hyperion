@@ -1,4 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { DateTime } from 'luxon';
@@ -15,7 +20,7 @@ import { PoRepConfig, PoRepPublicClient } from '../po-rep-indexer.types';
 @Injectable()
 export abstract class AbstractPoRepIndexerRunner<
   EventType extends AbiEvent = AbiEvent,
-> {
+> implements OnApplicationBootstrap {
   // Returns runner name used for storing information about indexing
   public abstract getName(): string;
 
@@ -58,7 +63,12 @@ export abstract class AbstractPoRepIndexerRunner<
     this.logger = new Logger(this.getName());
   }
 
-  // Run every hour by default. Override it with different decorator to change.
+  // Start indexing right after application is up instead of waiting for the
+  // first cron tick.
+  public onApplicationBootstrap() {
+    void this.execute();
+  }
+
   @Cron(CronExpression.EVERY_HOUR)
   public async execute() {
     this.logger.log('Starting indexing');
