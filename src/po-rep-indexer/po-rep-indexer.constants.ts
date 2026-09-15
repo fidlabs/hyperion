@@ -13,7 +13,7 @@ export const PO_REP_MARKET_CONTRACT_ADDRESS_KEY =
 
 // Block in which PoRep v2 contracts were deployed. Nothing indexed by this
 // module exists before it, so every runner starts here.
-export const PO_REP_ORIGIN_BLOCK = 6340761n;
+export const PO_REP_ORIGIN_BLOCK = 6337724n;
 
 export const PO_REP_SUPPORTED_CHAINS = [
   filecoin,

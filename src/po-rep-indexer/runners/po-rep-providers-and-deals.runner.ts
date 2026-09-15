@@ -118,7 +118,7 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
   }
 
   protected getVersion(): number {
-    return 3;
+    return 4;
   }
 
   protected getBatchBlockSize(): bigint {

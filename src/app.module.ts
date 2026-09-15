@@ -21,6 +21,12 @@ import { PoRepIndexerModule } from './po-rep-indexer';
 import { PrometheusMetricModule } from './prometheus';
 import { StorageProviderService } from './service/storage-provider/storage-provider.service';
 
+import { CidContactService } from './service/cid-contact/cid-contact.service';
+import { ERC20TokenInfoService } from './service/erc20-token-info/erc20-token-info.service';
+import { EthApiService } from './service/eth-api/eth-api.service';
+import { IpniMisreportingCheckerService } from './service/ipni-misreporting-checker/ipni-misreporting-checker.service';
+import { LocationService } from './service/location/location.service';
+import { LotusApiService } from './service/lotus-api/lotus-api.service';
 import { PoRepPriceOracleService } from './service/po-rep-price-oracle/po-rep-price-oracle.service';
 import { PoRepService } from './service/po-rep/po-rep.service';
 
@@ -54,6 +60,12 @@ const AGGREGATION_RUNNERS_RUN_ONLY = [];
     IpniAdvertisementFetcherJobService,
     PrismaService,
     StorageProviderService,
+    CidContactService,
+    LocationService,
+    ERC20TokenInfoService,
+    EthApiService,
+    LotusApiService,
+    IpniMisreportingCheckerService,
     PostgresService,
     PoRepPriceOracleService,
     PoRepService,

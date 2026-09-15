@@ -47,7 +47,7 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
   }
 
   protected getVersion(): number {
-    return 3;
+    return 4;
   }
 
   protected getBatchBlockSize(): bigint {

@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import packageJson from '../package.json';
+import * as packageJson from '../package.json';
 import { AppModule } from './app.module';
 
 (BigInt.prototype as any).toJSON = function () {
