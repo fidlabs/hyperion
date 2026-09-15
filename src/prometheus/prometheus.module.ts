@@ -13,7 +13,7 @@ import { aggregatePrometheusMetrics } from './aggregate-metrics/metrics';
 @Module({
   imports: [
     PrometheusModuleSource.register({
-      customMetricPrefix: 'filecoin-observer',
+      customMetricPrefix: 'hyperion',
       controller: PrometheusCustomMetricController,
       defaultMetrics: {
         enabled: false,

@@ -14,7 +14,7 @@ async function bootstrap() {
 
   // setup swagger
   const config = new DocumentBuilder()
-    .setTitle('Filecoin Observer')
+    .setTitle('Hyperion')
     .setVersion(packageJson.version)
     .build();
 

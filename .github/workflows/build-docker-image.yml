@@ -12,7 +12,7 @@ on:
         type: string
 
 env:
-  ECR_REPOSITORY: "filecoin-observer"
+  ECR_REPOSITORY: "hyperion"
 
 jobs:
   build_and_push:

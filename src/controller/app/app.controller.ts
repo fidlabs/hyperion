@@ -40,7 +40,7 @@ export class AppController extends HealthIndicator {
   @Get()
   @ApiExcludeEndpoint()
   public getRoot(): string {
-    return 'Filecoin Observer';
+    return 'Hyperion';
   }
 
   @Get('/health')
