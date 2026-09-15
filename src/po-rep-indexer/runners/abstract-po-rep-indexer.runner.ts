@@ -1,10 +1,16 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { DateTime } from 'luxon';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from 'src/db/prisma.service';
 import { AbiEvent, Address, GetLogsReturnType } from 'viem';
+import { DealManifestService } from '../deal-manifest.service';
 import {
   ARCHIVE_NODE_CLIENT,
   RECENT_NODE_CLIENT,
@@ -14,7 +20,7 @@ import { PoRepConfig, PoRepPublicClient } from '../po-rep-indexer.types';
 @Injectable()
 export abstract class AbstractPoRepIndexerRunner<
   EventType extends AbiEvent = AbiEvent,
-> {
+> implements OnApplicationBootstrap {
   // Returns runner name used for storing information about indexing
   public abstract getName(): string;
 
@@ -52,11 +58,17 @@ export abstract class AbstractPoRepIndexerRunner<
     protected readonly recentNodeClient: PoRepPublicClient,
     @Inject(ARCHIVE_NODE_CLIENT)
     protected readonly archiveNodeClient: PoRepPublicClient,
+    protected readonly dealManifestService: DealManifestService,
   ) {
     this.logger = new Logger(this.getName());
   }
 
-  // Run every hour by default. Override it with different decorator to change.
+  // Start indexing right after application is up instead of waiting for the
+  // first cron tick.
+  public onApplicationBootstrap() {
+    void this.execute();
+  }
+
   @Cron(CronExpression.EVERY_HOUR)
   public async execute() {
     this.logger.log('Starting indexing');

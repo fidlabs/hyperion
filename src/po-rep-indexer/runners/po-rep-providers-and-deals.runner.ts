@@ -11,6 +11,10 @@ import {
 import PoRepMarketABI from '../abis/po-rep-market.abi';
 import SPRegistryABI from '../abis/sp-registry.abi';
 import { PO_REP_ORIGIN_BLOCK } from '../po-rep-indexer.constants';
+import {
+  DealManifestResult,
+  DealManifestSuccessResult,
+} from '../po-rep-indexer.types';
 import { AbstractPoRepIndexerRunner } from './abstract-po-rep-indexer.runner';
 
 const EPOCHS_IN_DAY = 2880n;
@@ -118,7 +122,7 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
   }
 
   protected getVersion(): number {
-    return 3;
+    return 1;
   }
 
   protected getBatchBlockSize(): bigint {
@@ -141,6 +145,7 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
       this.prismaService.po_rep_deal_requirements.deleteMany(),
       this.prismaService.po_rep_deal_terms.deleteMany(),
       this.prismaService.po_rep_deal_state_change.deleteMany(),
+      this.prismaService.po_rep_deal_pieces.deleteMany(),
       this.prismaService.po_rep_deal.deleteMany(),
       this.prismaService.po_rep_offer_payment.deleteMany(),
       this.prismaService.po_rep_offer.deleteMany(),
@@ -151,21 +156,112 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
   protected async prepareUpdates(
     logs: Logs,
   ): Promise<Prisma.PrismaPromise<unknown>[]> {
-    const [dealsCreations, offersCreations, terminatedDealsStates] =
-      await Promise.all([
-        this.prepareDealsCreations(logs),
-        this.prepareOffersCreations(logs),
-        this.resolveTerminatedDealsStates(logs),
-      ]);
+    const [
+      dealsCreations,
+      offersCreations,
+      terminatedDealsStates,
+      manifestResults,
+    ] = await Promise.all([
+      this.prepareDealsCreations(logs),
+      this.prepareOffersCreations(logs),
+      this.resolveTerminatedDealsStates(logs),
+      this.resolveDealsManifests(logs),
+    ]);
 
     return [
+      ...this.prepareDealManifestCacheCreations(manifestResults),
       ...this.prepareProvidersCreations(logs),
       ...this.prepareProvidersUpdates(logs),
       ...offersCreations,
       ...this.prepareOffersUpdates(logs),
       ...dealsCreations,
+      ...this.prepareDealPiecesCreations(manifestResults),
       ...this.prepareDealsUpdates(logs, terminatedDealsStates),
       ...this.prepareDealStateChangeCreations(logs, terminatedDealsStates),
+    ];
+  }
+
+  private async resolveDealsManifests(
+    logs: Logs,
+  ): Promise<DealManifestSuccessResult[]> {
+    const manifestRequests = logs
+      .filter((log) => {
+        return isAddressEqual(
+          log.address,
+          this.configService.get('PO_REP_MARKET_CONTRACT_ADDRESS'),
+        );
+      })
+      .filter((log) => {
+        return log.eventName === 'DealCreated';
+      })
+      .map((log) => {
+        return this.dealManifestService.readDealManifest(
+          log.args.dealId,
+          log.args.manifestLocation,
+        );
+      });
+
+    const manifestResponses = await Promise.all(manifestRequests);
+
+    manifestResponses.forEach((response) => {
+      if (!response.success) {
+        this.logger.warn(
+          `Could not read manifest for deal ${response.dealId} at "${response.manifestLocation}" - skipping: ${String(response.error)}`,
+        );
+      }
+    });
+
+    return manifestResponses.filter(
+      (response): response is DealManifestSuccessResult => response.success,
+    );
+  }
+
+  private prepareDealManifestCacheCreations(
+    results: DealManifestSuccessResult[],
+  ): Prisma.PrismaPromise<unknown>[] {
+    const uncachedResults = results.filter((result) => !result.data.cached);
+
+    if (uncachedResults.length === 0) {
+      return [];
+    }
+
+    return [
+      this.prismaService.po_rep_deal_manifest_cache.createMany({
+        data: uncachedResults.map((result) => ({
+          deal_id: result.dealId,
+          manifest_location: result.manifestLocation,
+          manifest_content: result.data.manifestContent,
+        })),
+        skipDuplicates: true,
+      }),
+    ];
+  }
+
+  private prepareDealPiecesCreations(
+    results: DealManifestResult[],
+  ): Prisma.PrismaPromise<unknown>[] {
+    if (results.length === 0) {
+      return [];
+    }
+
+    const createInputs = results.flatMap((result) => {
+      const pieces = this.dealManifestService.extractDealManifestPieces(
+        result.data.manifestContent,
+      );
+
+      return pieces.map((piece) => {
+        return {
+          deal_id: result.dealId,
+          piece_cid: piece.pieceCid,
+        } satisfies Prisma.po_rep_deal_piecesCreateManyInput;
+      });
+    });
+
+    return [
+      this.prismaService.po_rep_deal_pieces.createMany({
+        data: createInputs,
+        skipDuplicates: true,
+      }),
     ];
   }
 

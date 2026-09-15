@@ -10,7 +10,7 @@ import {
 } from 'class-validator';
 import { PoRepDealState } from '../../generated/prisma/client';
 import { F0Id } from 'src/utils/utils';
-import { F0IdInput, IsF0IdInput } from 'src/utils/validators';
+import { F0IdInput, IsCID, IsF0IdInput } from 'src/utils/validators';
 
 export const poRepHistoryWindowSize = ['day', 'week', 'month'] as const;
 
@@ -125,6 +125,15 @@ export class PoRepDealsListParameters extends PaginationParameters {
   @IsOptional()
   @IsEnum(DealRailState)
   railState?: DealRailState;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional filter by piece CID, if provided only deals including that piece will be returned.',
+    required: false,
+  })
+  @IsOptional()
+  @IsCID()
+  pieceCid?: string;
 
   @ApiPropertyOptional({
     description: `Set to true to show active deals only. Deal is considered 
