@@ -158,6 +158,19 @@ model po_rep_deal_state_change {
   @@index([deal_id, state, changed_at_block(sort: Desc)])
 }
 
+model po_rep_deal_manifest_cache {
+  deal_id           BigInt @id
+  manifest_location String
+  manifest_content  Json
+}
+
+model po_rep_deal_pieces {
+  deal_id   BigInt
+  piece_cid String
+
+  @@id([deal_id, piece_cid])
+}
+
 model filecoin_pay_rail {
   railId              BigInt  @id
   token               String

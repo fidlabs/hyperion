@@ -2,6 +2,7 @@ import { FactoryProvider, Module, OnModuleInit } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DiscoveryModule, DiscoveryService } from '@nestjs/core';
 import { PrismaService } from '../db/prisma.service';
+import { DealManifestService } from './deal-manifest.service';
 import {
   ARCHIVE_NODE_CLIENT,
   RECENT_NODE_CLIENT,
@@ -55,6 +56,7 @@ const archiveNodeClient: FactoryProvider<PoRepPublicClient> = {
     FilecoinPayIndexerRunner,
     recentNodeClient,
     archiveNodeClient,
+    DealManifestService,
   ],
   exports: [recentNodeClient, archiveNodeClient],
 })

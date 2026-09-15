@@ -5,6 +5,7 @@ import { DateTime } from 'luxon';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from 'src/db/prisma.service';
 import { AbiEvent, Address, GetLogsReturnType } from 'viem';
+import { DealManifestService } from '../deal-manifest.service';
 import {
   ARCHIVE_NODE_CLIENT,
   RECENT_NODE_CLIENT,
@@ -52,6 +53,7 @@ export abstract class AbstractPoRepIndexerRunner<
     protected readonly recentNodeClient: PoRepPublicClient,
     @Inject(ARCHIVE_NODE_CLIENT)
     protected readonly archiveNodeClient: PoRepPublicClient,
+    protected readonly dealManifestService: DealManifestService,
   ) {
     this.logger = new Logger(this.getName());
   }
