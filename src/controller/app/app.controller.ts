@@ -1,11 +1,9 @@
-import { HttpService } from '@nestjs/axios';
 import { Cache, CACHE_MANAGER, CacheTTL } from '@nestjs/cache-manager';
 import { Controller, Get, Inject, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiExcludeEndpoint } from '@nestjs/swagger';
 import {
   HealthCheck,
-  HealthCheckError,
   HealthCheckResult,
   HealthCheckService,
   HealthIndicator,
@@ -13,10 +11,10 @@ import {
   HttpHealthIndicator,
   TypeOrmHealthIndicator,
 } from '@nestjs/terminus';
-import { firstValueFrom } from 'rxjs';
 import { PostgresService } from 'src/db/postgres.service';
 import { IpniAdvertisementFetcherJobService } from 'src/jobs/ipni-advertisement-fetcher-job/ipni-advertisement-fetcher-job.service';
 import { Cacheable } from 'src/utils/cacheable';
+import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-runner/ipni-reporting-daily-runner.service.ts';
 
 @Controller()
 export class AppController extends HealthIndicator {
@@ -32,7 +30,7 @@ export class AppController extends HealthIndicator {
     private readonly postgresService: PostgresService,
     private readonly configService: ConfigService,
     private readonly ipniAdvertisementFetcherJobService: IpniAdvertisementFetcherJobService,
-    private readonly httpService: HttpService,
+    private readonly ipniReportingDailyRunnerService: IpniReportingDailyRunnerService,
   ) {
     super();
   }
@@ -40,7 +38,7 @@ export class AppController extends HealthIndicator {
   @Get()
   @ApiExcludeEndpoint()
   public getRoot(): string {
-    return 'Hyperion';
+    return 'Hyperion API';
   }
 
   @Get('/health')
@@ -83,30 +81,6 @@ export class AppController extends HealthIndicator {
     );
   }
 
-  @Cacheable({ ttl: 1000 * 60 * 60 }) // 1 hour
-  private async _httpPingCheckFilscan(): Promise<HealthIndicatorResult> {
-    let healthy = false;
-
-    try {
-      const endpoint = `${this.configService.get<string>('FILSCAN_API_BASE_URL')}/v1/TotalIndicators`;
-
-      const { data } = await firstValueFrom(
-        this.httpService.post(endpoint, {}),
-      );
-
-      healthy = !!data?.['result'];
-
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (_) {
-      healthy = false;
-    }
-
-    const result = this.getStatus('filscan-api', healthy);
-
-    if (healthy) return result;
-    throw new HealthCheckError('Healthcheck failed', result);
-  }
-
   private async _httpPingCheckGlifApi(): Promise<HealthIndicatorResult> {
     const url = `${this.configService.get<string>('GLIF_API_BASE_URL')}/v1`;
 
@@ -136,6 +110,7 @@ export class AppController extends HealthIndicator {
         timeout: 5000,
       }),
       () => this.ipniAdvertisementFetcherJobService.getHealth(),
+      () => this.ipniReportingDailyRunnerService.getHealth(),
     ]);
   }
 }

@@ -36,7 +36,7 @@ export class IpniAdvertisementFetcherJobService extends HealthIndicator {
     throw new HealthCheckError('Healthcheck failed', result);
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_8PM)
+  @Cron(CronExpression.EVERY_DAY_AT_3PM)
   public async runIPNIAdvertisementFetcherJob() {
     if (!this.jobInProgress) {
       this.jobInProgress = true;
@@ -47,7 +47,7 @@ export class IpniAdvertisementFetcherJobService extends HealthIndicator {
 
         await this._runIPNIAdvertisementFetcherJob();
 
-        this.logger.log(`Finishing IPNI Advertisement Fetcher job`);
+        this.logger.log(`Finished IPNI Advertisement Fetcher job`);
       } catch (err) {
         this.healthy = false;
         this.logger.error(
