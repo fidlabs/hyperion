@@ -46,3 +46,10 @@ export interface IPNIAdvertisement {
     };
   };
 }
+
+export interface IPAddress {
+  address: string;
+  port: number;
+  protocol: string;
+  isHttps?: boolean;
+}
