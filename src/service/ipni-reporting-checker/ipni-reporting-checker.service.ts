@@ -10,11 +10,11 @@ import {
   AggregatedProvidersIPNIReportingStatusWeekly,
   ProviderIPNIReportingStatus,
   StorageProviderIpniReportingStatus,
-} from './types.ipni-misreporting-checker';
+} from './types.ipni-reporting-checker';
 
 @Injectable()
-export class IpniMisreportingCheckerService {
-  private readonly logger = new Logger(IpniMisreportingCheckerService.name);
+export class IpniReportingCheckerService {
+  private readonly logger = new Logger(IpniReportingCheckerService.name);
 
   constructor(
     private readonly prismaService: PrismaService,

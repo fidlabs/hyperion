@@ -21,7 +21,7 @@ import { StorageProviderService } from './service/storage-provider/storage-provi
 import { CidContactService } from './service/cid-contact/cid-contact.service';
 import { ERC20TokenInfoService } from './service/erc20-token-info/erc20-token-info.service';
 import { EthApiService } from './service/eth-api/eth-api.service';
-import { IpniMisreportingCheckerService } from './service/ipni-misreporting-checker/ipni-misreporting-checker.service';
+import { IpniReportingCheckerService } from 'src/service/ipni-reporting-checker/ipni-reporting-checker.service';
 import { LotusApiService } from './service/lotus-api/lotus-api.service';
 import { PoRepPriceOracleService } from './service/po-rep-price-oracle/po-rep-price-oracle.service';
 import { PoRepService } from './service/po-rep/po-rep.service';
@@ -48,7 +48,7 @@ import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-r
     ERC20TokenInfoService,
     EthApiService,
     LotusApiService,
-    IpniMisreportingCheckerService,
+    IpniReportingCheckerService,
     PostgresService,
     PoRepPriceOracleService,
     PoRepService,

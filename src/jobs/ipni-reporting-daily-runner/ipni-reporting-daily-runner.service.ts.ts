@@ -6,7 +6,7 @@ import {
   HealthIndicatorResult,
 } from '@nestjs/terminus';
 import { PrismaService } from 'src/db/prisma.service';
-import { IpniMisreportingCheckerService } from 'src/service/ipni-misreporting-checker/ipni-misreporting-checker.service';
+import { IpniReportingCheckerService } from 'src/service/ipni-reporting-checker/ipni-reporting-checker.service';
 
 @Injectable()
 export class IpniReportingDailyRunnerService extends HealthIndicator {
@@ -16,7 +16,7 @@ export class IpniReportingDailyRunnerService extends HealthIndicator {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly ipniMisreportingCheckerService: IpniMisreportingCheckerService,
+    private readonly ipniReportingCheckerService: IpniReportingCheckerService,
   ) {
     super();
   }
@@ -62,7 +62,7 @@ export class IpniReportingDailyRunnerService extends HealthIndicator {
 
   public async _runIPNIReportingDailyRunnerJob() {
     const result =
-      await this.ipniMisreportingCheckerService.getAggregatedProvidersReportingStatus();
+      await this.ipniReportingCheckerService.getAggregatedProvidersReportingStatus();
 
     const data = {
       not_reporting: result.notReporting,
