@@ -41,6 +41,7 @@ export function createPoRepDealsQuery(
           'd.providerId as provider_id',
           'd.client as client_address',
           'd.state as deal_state',
+          'd.dealType as deal_type',
           'd.totalDealSize as deal_size_bytes',
           'd.railId as rail_id',
           'r.token_address',

@@ -1,5 +1,9 @@
 import { groupBy, last, uniqBy } from 'lodash';
-import { PoRepDealState, Prisma } from '../../generated/prisma/client';
+import {
+  PoRepDealState,
+  PoRepDealType,
+  Prisma,
+} from '../../generated/prisma/client';
 import { mergeBigIntFieldUpdate } from 'src/utils/prisma';
 import {
   type AbiEvent,
@@ -11,6 +15,7 @@ import {
 import PoRepMarketABI from '../abis/po-rep-market.abi';
 import SPRegistryABI from '../abis/sp-registry.abi';
 import { PO_REP_ORIGIN_BLOCK } from '../po-rep-indexer.constants';
+import { UnknownDealTypeError } from '../po-rep-indexer.errors';
 import {
   DealManifestResult,
   DealManifestSuccessResult,
@@ -27,6 +32,12 @@ const dealStateByContractValue: Record<number, PoRepDealState> = {
   50: PoRepDealState.REJECTED,
   60: PoRepDealState.EXPIRED,
   70: PoRepDealState.EARLY_TERMINATED,
+};
+
+const dealTypeByContractValue: Record<number, PoRepDealType> = {
+  0: PoRepDealType.NONE,
+  10: PoRepDealType.PUBLIC,
+  20: PoRepDealType.PRIVATE,
 };
 
 type EventType = (typeof events)[number];
@@ -122,7 +133,7 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
   }
 
   protected getVersion(): number {
-    return 1;
+    return 2;
   }
 
   protected getBatchBlockSize(): bigint {
@@ -510,6 +521,7 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
             offerId: deal.offerId,
             client: log.args.client,
             state: PoRepDealState.ACCEPTED,
+            dealType: this.resolveDealType(deal.dealType),
             manifestLocation: log.args.manifestLocation,
             totalDealSize: log.args.totalDealSize,
             proposedAtBlock: log.args.proposedAtBlock,
@@ -538,6 +550,16 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
         ),
       }),
     ];
+  }
+
+  private resolveDealType(contractValue: number): PoRepDealType {
+    const dealType = dealTypeByContractValue[contractValue];
+
+    if (!dealType) {
+      throw new UnknownDealTypeError(contractValue);
+    }
+
+    return dealType;
   }
 
   private async resolveTerminatedDealsStates(

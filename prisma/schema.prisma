@@ -120,6 +120,7 @@ model po_rep_deal {
   offerId          BigInt
   client           String
   state            PoRepDealState
+  dealType         PoRepDealType              @default(NONE)
   manifestLocation String
   totalDealSize    BigInt
   proposedAtBlock  BigInt
@@ -217,4 +218,10 @@ enum PoRepDealState {
   REJECTED
   EXPIRED
   EARLY_TERMINATED
+}
+
+enum PoRepDealType {
+  NONE
+  PUBLIC
+  PRIVATE
 }

@@ -10,6 +10,14 @@ export class CachedManifestLocationMismatchError extends Error {
   }
 }
 
+export class UnknownDealTypeError extends Error {
+  constructor(contractValue: number) {
+    super(
+      `Unknown deal type "${contractValue}" returned by PoRep Market contract.`,
+    );
+  }
+}
+
 export class CachedManifestInvalidError extends Error {
   constructor(dealId: bigint) {
     super(`Invalid cached manifest for deal "${dealId}" found.`);

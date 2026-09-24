@@ -8,7 +8,7 @@ import {
   IsOptional,
   Min,
 } from 'class-validator';
-import { PoRepDealState } from '../../generated/prisma/client';
+import { PoRepDealState, PoRepDealType } from '../../generated/prisma/client';
 import { F0Id } from 'src/utils/utils';
 import { F0IdInput, IsCID, IsF0IdInput } from 'src/utils/validators';
 
@@ -203,6 +203,19 @@ export class PoRepDeal {
     enumName: 'PoRepDealState',
   })
   dealState: PoRepDealState;
+
+  @ApiProperty({
+    description: `Type of a deal, can be one of:\n
+      - ${PoRepDealType.NONE} - no type recorded for that deal. Contract
+      rejects proposals without a type, so on-chain deals are never of that
+      type\n
+      - ${PoRepDealType.PUBLIC} - deal data is public\n
+      - ${PoRepDealType.PRIVATE} - deal data is private
+    `,
+    enum: PoRepDealType,
+    enumName: 'PoRepDealType',
+  })
+  dealType: PoRepDealType;
 
   @ApiProperty({
     description: `Unique identificator of a payment rail for a deal. Null
