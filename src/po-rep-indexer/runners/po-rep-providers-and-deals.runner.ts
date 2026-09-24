@@ -15,6 +15,7 @@ import {
 import PoRepMarketABI from '../abis/po-rep-market.abi';
 import SPRegistryABI from '../abis/sp-registry.abi';
 import { PO_REP_ORIGIN_BLOCK } from '../po-rep-indexer.constants';
+import { UnknownDealTypeError } from '../po-rep-indexer.errors';
 import {
   DealManifestResult,
   DealManifestSuccessResult,
@@ -520,7 +521,7 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
             offerId: deal.offerId,
             client: log.args.client,
             state: PoRepDealState.ACCEPTED,
-            dealType: this.resolveDealType(deal.dealType, log.args.dealId),
+            dealType: this.resolveDealType(deal.dealType),
             manifestLocation: log.args.manifestLocation,
             totalDealSize: log.args.totalDealSize,
             proposedAtBlock: log.args.proposedAtBlock,
@@ -551,19 +552,14 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
     ];
   }
 
-  private resolveDealType(
-    contractValue: number,
-    dealId: bigint,
-  ): PoRepDealType {
+  private resolveDealType(contractValue: number): PoRepDealType {
     const dealType = dealTypeByContractValue[contractValue];
 
     if (!dealType) {
-      this.logger.warn(
-        `Unknown type "${contractValue}" of deal ${dealId.toString()}, assuming ${PoRepDealType.NONE}`,
-      );
+      throw new UnknownDealTypeError(contractValue);
     }
 
-    return dealType ?? PoRepDealType.NONE;
+    return dealType;
   }
 
   private async resolveTerminatedDealsStates(
