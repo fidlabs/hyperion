@@ -1,5 +1,9 @@
 import { groupBy, last, uniqBy } from 'lodash';
-import { PoRepDealState, Prisma } from '../../generated/prisma/client';
+import {
+  PoRepDealState,
+  PoRepDealType,
+  Prisma,
+} from '../../generated/prisma/client';
 import { mergeBigIntFieldUpdate } from 'src/utils/prisma';
 import {
   type AbiEvent,
@@ -27,6 +31,12 @@ const dealStateByContractValue: Record<number, PoRepDealState> = {
   50: PoRepDealState.REJECTED,
   60: PoRepDealState.EXPIRED,
   70: PoRepDealState.EARLY_TERMINATED,
+};
+
+const dealTypeByContractValue: Record<number, PoRepDealType> = {
+  0: PoRepDealType.NONE,
+  10: PoRepDealType.PUBLIC,
+  20: PoRepDealType.PRIVATE,
 };
 
 type EventType = (typeof events)[number];
@@ -122,7 +132,7 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
   }
 
   protected getVersion(): number {
-    return 1;
+    return 2;
   }
 
   protected getBatchBlockSize(): bigint {
@@ -510,6 +520,7 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
             offerId: deal.offerId,
             client: log.args.client,
             state: PoRepDealState.ACCEPTED,
+            dealType: this.resolveDealType(deal.dealType, log.args.dealId),
             manifestLocation: log.args.manifestLocation,
             totalDealSize: log.args.totalDealSize,
             proposedAtBlock: log.args.proposedAtBlock,
@@ -538,6 +549,21 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
         ),
       }),
     ];
+  }
+
+  private resolveDealType(
+    contractValue: number,
+    dealId: bigint,
+  ): PoRepDealType {
+    const dealType = dealTypeByContractValue[contractValue];
+
+    if (!dealType) {
+      this.logger.warn(
+        `Unknown type "${contractValue}" of deal ${dealId.toString()}, assuming ${PoRepDealType.NONE}`,
+      );
+    }
+
+    return dealType ?? PoRepDealType.NONE;
   }
 
   private async resolveTerminatedDealsStates(

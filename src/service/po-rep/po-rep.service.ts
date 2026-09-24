@@ -139,6 +139,7 @@ export class PoRepService {
         providerId: F0Id.from(result.provider_id),
         clientAddress: result.client_address,
         dealState: result.deal_state,
+        dealType: result.deal_type,
         railId: result.rail_id ? BigInt(result.rail_id) : null,
         railState: result.rail_state as DealRailState | null,
         active: Boolean(result.active),
