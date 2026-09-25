@@ -6,7 +6,6 @@ import {
   Inject,
   Query,
   UseInterceptors,
-  ValidationPipe,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
@@ -38,8 +37,7 @@ export class PoRepController extends ControllerBase {
     type: PoRepDealsList,
   })
   public getDeals(
-    @Query(new ValidationPipe({ transform: true }))
-    query: PoRepDealsListParameters,
+    @Query() query: PoRepDealsListParameters,
   ): Promise<PoRepDealsList> {
     return this.poRepService.getDeals(query);
   }
@@ -52,7 +50,7 @@ export class PoRepController extends ControllerBase {
     type: [PoRepOnboardedDataHistoryEntry],
   })
   public async getOnboardedDataHistory(
-    @Query(new ValidationPipe()) query: PoRepOnboardedDataHistoryParameters,
+    @Query() query: PoRepOnboardedDataHistoryParameters,
   ): Promise<PoRepOnboardedDataHistoryEntry[]> {
     return this.poRepService.getOnboardedDataHistory(query);
   }
@@ -65,7 +63,7 @@ export class PoRepController extends ControllerBase {
     type: [PoRepDealsValueHistoryEntry],
   })
   public async getDealsValueHistory(
-    @Query(new ValidationPipe()) query: PoRepDealsValueHistoryParameters,
+    @Query() query: PoRepDealsValueHistoryParameters,
   ): Promise<PoRepDealsValueHistoryEntry[]> {
     return this.poRepService.getDealsValueHistory(query);
   }
@@ -79,7 +77,7 @@ export class PoRepController extends ControllerBase {
     type: [PoRepDealsPaymentsHistoryEntry],
   })
   public async getPaymentsHistory(
-    @Query(new ValidationPipe())
+    @Query()
     query: PoRepDealsPaymentsHistoryParameters,
   ): Promise<PoRepDealsPaymentsHistoryEntry[]> {
     return this.poRepService.getDealsPaymentsSummaryHistory(query);
