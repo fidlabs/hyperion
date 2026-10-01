@@ -17,7 +17,6 @@ import { ErrorHandlerMiddleware } from './middleware/error-handler.middleware';
 import { RequestLoggerMiddleware } from './middleware/request-logger.middleware';
 import { PoRepIndexerModule } from './po-rep-indexer';
 import { PrometheusMetricModule } from './prometheus';
-import { StorageProviderService } from './service/storage-provider/storage-provider.service';
 import { CidContactService } from './service/cid-contact/cid-contact.service';
 import { ERC20TokenInfoService } from './service/erc20-token-info/erc20-token-info.service';
 import { EthApiService } from './service/eth-api/eth-api.service';
@@ -43,7 +42,6 @@ import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-r
     IpniAdvertisementFetcherJobService,
     IpniReportingDailyRunnerService,
     PrismaService,
-    StorageProviderService,
     CidContactService,
     ERC20TokenInfoService,
     EthApiService,
