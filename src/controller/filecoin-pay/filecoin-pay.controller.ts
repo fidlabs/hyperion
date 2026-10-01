@@ -30,8 +30,7 @@ import {
 class BigIntTransform implements PipeTransform<string, bigint> {
   transform(value: string): bigint {
     try {
-      const parsedValue = BigInt(value);
-      return parsedValue;
+      return BigInt(value);
     } catch {
       const message = `'${value}' is not a valid rail id`;
       throw new BadRequestException(message, message);

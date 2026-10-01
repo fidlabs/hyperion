@@ -66,27 +66,4 @@ export class LotusApiService {
       },
     };
   }
-
-  public async getClientDatacap(clientId: string): Promise<bigint | null> {
-    const endpoint = `${this.configService.get<string>('GLIF_API_BASE_URL')}/v1`;
-
-    const { data } = await firstValueFrom(
-      this.httpService.post<LotusStateVerifiedClientStatusResponse>(endpoint, {
-        jsonrpc: '2.0',
-        method: 'Filecoin.StateVerifiedClientStatus',
-        params: [clientId, []],
-        id: 0,
-      }),
-    );
-
-    if (data.error || !data.result) {
-      this.logger.warn(
-        `Glif API returned an error for StateVerifiedClientStatus with clientId ${clientId}: ${JSON.stringify(data)}`,
-      );
-
-      return null;
-    }
-
-    return BigInt(data.result);
-  }
 }
