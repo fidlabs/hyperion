@@ -26,6 +26,7 @@ import { PoRepPriceOracleService } from './service/po-rep-price-oracle/po-rep-pr
 import { PoRepService } from './service/po-rep/po-rep.service';
 import { queryBuilderProviders } from './db';
 import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-runner/ipni-reporting-daily-runner.service.ts';
+import { IPNIController } from 'src/controller/ipni/ipni.controller';
 
 @Module({
   imports: [
@@ -37,7 +38,12 @@ import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-r
     PrometheusMetricModule,
     PoRepIndexerModule,
   ],
-  controllers: [PoRepController, FilecoinPayController, AppController],
+  controllers: [
+    PoRepController,
+    FilecoinPayController,
+    AppController,
+    IPNIController,
+  ],
   providers: [
     IpniAdvertisementFetcherJobService,
     IpniReportingDailyRunnerService,
