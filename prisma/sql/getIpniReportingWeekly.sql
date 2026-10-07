@@ -4,8 +4,7 @@ with "with_week" as (select "date",
                             "not_reporting",
                             "total",
                             date_trunc('week', "date") as "week"
-                    from "ipni_reporting_daily"
-)
+                     from "ipni_reporting_daily")
 --
 select distinct on ("week") "week",
                             "ok",

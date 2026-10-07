@@ -14,7 +14,7 @@ import {
 import { PostgresService } from 'src/db/postgres.service';
 import { IpniAdvertisementFetcherJobService } from 'src/jobs/ipni-advertisement-fetcher-job/ipni-advertisement-fetcher-job.service';
 import { Cacheable } from 'src/utils/cacheable';
-import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-runner/ipni-reporting-daily-runner.service.ts';
+import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-runner/ipni-reporting-daily-runner.service';
 
 @Controller()
 export class AppController extends HealthIndicator {

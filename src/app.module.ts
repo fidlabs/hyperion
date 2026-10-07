@@ -20,12 +20,11 @@ import { PrometheusMetricModule } from './prometheus';
 import { CidContactService } from './service/cid-contact/cid-contact.service';
 import { ERC20TokenInfoService } from './service/erc20-token-info/erc20-token-info.service';
 import { EthApiService } from './service/eth-api/eth-api.service';
-import { IpniReportingCheckerService } from 'src/service/ipni-reporting-checker/ipni-reporting-checker.service';
 import { LotusApiService } from './service/lotus-api/lotus-api.service';
 import { PoRepPriceOracleService } from './service/po-rep-price-oracle/po-rep-price-oracle.service';
 import { PoRepService } from './service/po-rep/po-rep.service';
 import { queryBuilderProviders } from './db';
-import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-runner/ipni-reporting-daily-runner.service.ts';
+import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-runner/ipni-reporting-daily-runner.service';
 import { IPNIController } from 'src/controller/ipni/ipni.controller';
 
 @Module({
@@ -52,7 +51,6 @@ import { IPNIController } from 'src/controller/ipni/ipni.controller';
     ERC20TokenInfoService,
     EthApiService,
     LotusApiService,
-    IpniReportingCheckerService,
     PostgresService,
     PoRepPriceOracleService,
     PoRepService,

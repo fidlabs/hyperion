@@ -84,9 +84,7 @@ export class IpniAdvertisementFetcherJobService extends HealthIndicator {
     }
   }
 
-  private async fetchAndStoreAdvertisementsByProvider(
-    provider: IPNIProvider,
-  ): Promise<void> {
+  private async fetchAndStoreAdvertisementsByProvider(provider: IPNIProvider) {
     const parsedAddress =
       this.cidContactService.extractMultiaddrAndBuildPublisherBaseUrl(
         provider.Publisher.Addrs[0],
@@ -113,7 +111,7 @@ export class IpniAdvertisementFetcherJobService extends HealthIndicator {
     currentAd: IPNIAdvertisement,
     baseUrl: string,
     adLimit?: number,
-  ): Promise<void> {
+  ) {
     do {
       try {
         await this.prismaService.ipni_publisher_advertisement.create({
