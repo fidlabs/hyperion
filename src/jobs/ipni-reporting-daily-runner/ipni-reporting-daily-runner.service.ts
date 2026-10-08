@@ -8,7 +8,7 @@ import {
 import { PrismaService } from 'src/db/prisma.service';
 import { LotusApiService } from 'src/service/lotus-api/lotus-api.service';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
-import { bigIntToNumber } from 'src/utils/utils';
+import { bigIntToNumber, F0Id } from 'src/utils/utils';
 import {
   AggregatedProvidersIPNIReportingStatus,
   ProviderIPNIReportingStatus,
@@ -41,7 +41,7 @@ export class IpniReportingDailyRunnerService extends HealthIndicator {
     throw new HealthCheckError('Healthcheck failed', result);
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_10PM)
+  @Cron(CronExpression.EVERY_MINUTE)
   public async runIPNIReportingDailyRunnerJob() {
     if (!this.jobInProgress) {
       this.jobInProgress = true;
@@ -92,7 +92,7 @@ export class IpniReportingDailyRunnerService extends HealthIndicator {
     // try to execute all in parallel
     const promiseResults = await Promise.allSettled(
       storageProviders.map((storageProvider) =>
-        this.getProviderReportingStatus(storageProvider.toString()),
+        this.getProviderReportingStatus(storageProvider),
       ),
     );
 
@@ -102,9 +102,7 @@ export class IpniReportingDailyRunnerService extends HealthIndicator {
         result.push((promiseResults[i] as PromiseFulfilledResult<ProviderIPNIReportingStatus>).value);
       } else {
         // retry sequentially for failed requests
-        result.push(
-          await this.getProviderReportingStatus(storageProviders[i].toString()),
-        );
+        result.push(await this.getProviderReportingStatus(storageProviders[i]));
       }
     }
 
@@ -123,10 +121,12 @@ export class IpniReportingDailyRunnerService extends HealthIndicator {
   }
 
   public async getProviderReportingStatus(
-    storageProviderId: string,
+    storageProviderId: F0Id,
     minerInfo?: LotusStateMinerInfoResponse,
   ): Promise<ProviderIPNIReportingStatus> {
-    minerInfo ??= await this.lotusApiService.getMinerInfo(storageProviderId);
+    minerInfo ??= await this.lotusApiService.getMinerInfo(
+      storageProviderId.toString(),
+    );
 
     const actualClaimsCount =
       await this.getProviderActualClaimsCount(storageProviderId);
@@ -150,14 +150,20 @@ export class IpniReportingDailyRunnerService extends HealthIndicator {
   }
 
   private async getProviderActualClaimsCount(
-    storageProviderId: string,
+    storageProviderId: F0Id,
   ): Promise<number> {
-    return this.prismaService.$queryRaw`
+    return bigIntToNumber(
+      (
+        await this.prismaService.$queryRaw<{
+          count: bigint;
+        }>`
       SELECT count("po_rep_deal_pieces"."piece_cid")
       FROM "po_rep_deal_pieces"
                JOIN "po_rep_deal" ON "po_rep_deal"."dealId" = "po_rep_deal_pieces"."deal_id"
-      WHERE "po_rep_deal"."providerId" = ${storageProviderId};
-    `;
+      WHERE "po_rep_deal"."providerId" = ${storageProviderId.toBigInt()};
+    `
+      )?.[0]?.count ?? 0n,
+    );
   }
 
   private async getProviderIPNIReportedClaimsCountByPeerId(
