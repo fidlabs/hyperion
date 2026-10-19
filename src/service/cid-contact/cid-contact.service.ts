@@ -4,8 +4,11 @@ import { AxiosRequestConfig } from 'axios';
 import { decodeAllSync } from 'cbor';
 import { Multiaddr } from 'multiaddr';
 import { lastValueFrom } from 'rxjs';
-import { Address } from '../location/types.location';
-import { IPNIAdvertisement, IPNIProvider } from './types.cid-contact';
+import {
+  IPAddress,
+  IPNIAdvertisement,
+  IPNIProvider,
+} from './types.cid-contact';
 
 const base64Regex =
   /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
@@ -17,6 +20,16 @@ export class CidContactService {
   constructor(private readonly httpService: HttpService) {}
 
   public async getIPNIProviders(): Promise<IPNIProvider[]> {
+    try {
+      return await this._getIPNIProviders();
+    } catch (err) {
+      throw new Error(`Error fetching IPNI providers: ${err.message}`, {
+        cause: err,
+      });
+    }
+  }
+
+  private async _getIPNIProviders(): Promise<IPNIProvider[]> {
     const endpoint = 'https://cid.contact/providers';
     const { data } = await lastValueFrom(this.httpService.get(endpoint));
     return data;
@@ -45,9 +58,7 @@ export class CidContactService {
     if (!advertisementId) return null;
 
     const endpoint = `${baseUrl}/ipni/v1/ad/${advertisementId}`;
-
     const { data } = await lastValueFrom(this.httpService.get(endpoint));
-
     return { ...data, ID: advertisementId };
   }
 
@@ -102,7 +113,6 @@ export class CidContactService {
 
       if (isCurioBaseUrl) {
         const decodedCborCurio = decodeAllSync(data); // decode as CBOR
-
         entriesCount += decodedCborCurio[0]?.Entries?.length;
         nextEntriesData = decodedCborCurio[0]?.Next?.['/'];
       } else {
@@ -121,7 +131,7 @@ export class CidContactService {
   public extractMultiaddrAndBuildPublisherBaseUrl(publisherAddress: string): {
     multiaddrString: string;
     publisherBaseUrl: string;
-    multiaddr: Address;
+    multiaddr: IPAddress;
   } {
     let finalMultiAddrToParse = publisherAddress;
 
@@ -136,12 +146,12 @@ export class CidContactService {
 
     let curioSuffix = '';
 
-    // TODO temporary fix needed because multiaddr library does not support /dns/ prefix
+    // fix needed because multiaddr library does not support /dns/ prefix
     if (finalMultiAddrToParse.startsWith('/dns/')) {
       finalMultiAddrToParse = finalMultiAddrToParse.replace('/dns/', '/dns4/');
     }
 
-    // TODO temporary fix needed because multiaddr library does not support /http-path/ and /ipni-provider/ sections - curio includes this in their multiaddrs
+    // fix needed because multiaddr library does not support /http-path/ and /ipni-provider/ sections - curio includes this in their multiaddrs
     if (
       finalMultiAddrToParse.includes('http-path') &&
       finalMultiAddrToParse.includes('ipni-provider')
@@ -164,7 +174,7 @@ export class CidContactService {
         cleanedAddress.length,
       );
 
-      // Add missing STANDARD parts of multiaddr to curio multiaddr - curio omits tcp/port before http/https
+      // add missing STANDARD parts of multiaddr to curio multiaddr - curio omits tcp/port before http/https
       if (newMultiAddrCurio.endsWith('https')) {
         newMultiAddrCurio = newMultiAddrCurio.replace('https', 'tcp/443/https');
       } else if (newMultiAddrCurio.endsWith('/http')) {
@@ -176,7 +186,7 @@ export class CidContactService {
 
     const multiaddrInstance = new Multiaddr(finalMultiAddrToParse);
 
-    const publisherAddressInstance: Address = {
+    const publisherAddressInstance: IPAddress = {
       address: multiaddrInstance.nodeAddress().address,
       port: multiaddrInstance.nodeAddress().port,
       protocol: multiaddrInstance.protos()[0].name,

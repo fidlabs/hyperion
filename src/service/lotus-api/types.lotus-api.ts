@@ -1,19 +1,7 @@
-export interface LotusStateVerifiedClientStatusResponse {
-  jsonrpc: string;
-  result?: string;
-  error?: LotusError;
-  id: number;
-}
-
 export interface LotusStateMinerInfoResponse {
   jsonrpc: string;
   result: LotusStateMinerInfoResult;
   id: number;
-}
-
-export interface LotusError {
-  code: number;
-  message: string;
 }
 
 export interface LotusStateMinerInfoResult {

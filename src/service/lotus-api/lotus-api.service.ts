@@ -6,10 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { Cacheable } from 'src/utils/cacheable';
 import { Retryable } from 'src/utils/retryable';
 import { EthApiService } from '../eth-api/eth-api.service';
-import {
-  LotusStateMinerInfoResponse,
-  LotusStateVerifiedClientStatusResponse,
-} from './types.lotus-api';
+import { LotusStateMinerInfoResponse } from './types.lotus-api';
 
 @Injectable()
 export class LotusApiService {
@@ -33,6 +30,15 @@ export class LotusApiService {
         `Error fetching miner info for ${storageProviderId}: ${err.message}`,
         { cause: err },
       );
+    }
+  }
+
+  @Cacheable({ ttl: 1000 * 60 * 60 * 12 }) // 12 hours
+  public async listMiners(): Promise<string[]> {
+    try {
+      return await this._listMiners();
+    } catch (err) {
+      throw new Error(`Error listing miners: ${err.message}`, { cause: err });
     }
   }
 
@@ -67,26 +73,21 @@ export class LotusApiService {
     };
   }
 
-  public async getClientDatacap(clientId: string): Promise<bigint | null> {
+  @Retryable({ retries: 3, delay: 5000 }) // 5 seconds
+  private async _listMiners(): Promise<string[]> {
     const endpoint = `${this.configService.get<string>('GLIF_API_BASE_URL')}/v1`;
 
     const { data } = await firstValueFrom(
-      this.httpService.post<LotusStateVerifiedClientStatusResponse>(endpoint, {
+      this.httpService.post<{ result: string[] }>(endpoint, {
         jsonrpc: '2.0',
-        method: 'Filecoin.StateVerifiedClientStatus',
-        params: [clientId, []],
-        id: 0,
+        id: 1,
+        method: 'Filecoin.StateListMiners',
+        params: [null],
       }),
     );
 
-    if (data.error || !data.result) {
-      this.logger.warn(
-        `Glif API returned an error for StateVerifiedClientStatus with clientId ${clientId}: ${JSON.stringify(data)}`,
-      );
+    if (!data?.result) throw new Error(`No data`);
 
-      return null;
-    }
-
-    return BigInt(data.result);
+    return data.result;
   }
 }

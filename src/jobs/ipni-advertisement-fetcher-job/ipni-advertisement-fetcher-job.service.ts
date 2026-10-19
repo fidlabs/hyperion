@@ -36,7 +36,7 @@ export class IpniAdvertisementFetcherJobService extends HealthIndicator {
     throw new HealthCheckError('Healthcheck failed', result);
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_8PM)
+  @Cron(CronExpression.EVERY_DAY_AT_3PM)
   public async runIPNIAdvertisementFetcherJob() {
     if (!this.jobInProgress) {
       this.jobInProgress = true;
@@ -47,7 +47,7 @@ export class IpniAdvertisementFetcherJobService extends HealthIndicator {
 
         await this._runIPNIAdvertisementFetcherJob();
 
-        this.logger.log(`Finishing IPNI Advertisement Fetcher job`);
+        this.logger.log(`Finished IPNI Advertisement Fetcher job`);
       } catch (err) {
         this.healthy = false;
         this.logger.error(
@@ -84,9 +84,7 @@ export class IpniAdvertisementFetcherJobService extends HealthIndicator {
     }
   }
 
-  private async fetchAndStoreAdvertisementsByProvider(
-    provider: IPNIProvider,
-  ): Promise<void> {
+  private async fetchAndStoreAdvertisementsByProvider(provider: IPNIProvider) {
     const parsedAddress =
       this.cidContactService.extractMultiaddrAndBuildPublisherBaseUrl(
         provider.Publisher.Addrs[0],
@@ -113,7 +111,7 @@ export class IpniAdvertisementFetcherJobService extends HealthIndicator {
     currentAd: IPNIAdvertisement,
     baseUrl: string,
     adLimit?: number,
-  ): Promise<void> {
+  ) {
     do {
       try {
         await this.prismaService.ipni_publisher_advertisement.create({

@@ -187,6 +187,17 @@ export class PoRepService {
     };
   }
 
+  public async getProviders(): Promise<F0Id[]> {
+    const results = await this.prismaService.po_rep_deal.findMany({
+      select: {
+        providerId: true,
+      },
+      distinct: ['providerId'],
+    });
+
+    return results.map((result) => F0Id.from(result.providerId));
+  }
+
   public async getProviderStorageStatistics(
     providerId: F0Id | F0IdInput,
   ): Promise<PoRepProviderStorageStatistics | null> {
@@ -580,8 +591,7 @@ export class PoRepService {
     });
 
     const tokenDetailsResponses = await Promise.all(tokenDetailsRequests);
-    const tokenDetailsMap = new Map(tokenDetailsResponses);
-    return tokenDetailsMap;
+    return new Map(tokenDetailsResponses);
   }
 
   private async getTokensExchangeRatesUSD<T extends string>(
@@ -595,8 +605,6 @@ export class PoRepService {
     });
 
     const tokensExchangeRates = await Promise.all(tokenExchangeRateRequests);
-    const tokensExchangeRateMap = new Map(tokensExchangeRates);
-
-    return tokensExchangeRateMap;
+    return new Map(tokensExchangeRates);
   }
 }

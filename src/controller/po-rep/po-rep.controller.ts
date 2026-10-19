@@ -9,7 +9,6 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation } from '@nestjs/swagger';
-import { PrismaService } from 'src/db/prisma.service';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
   PoRepDealsList,
@@ -28,7 +27,6 @@ import { ControllerBase } from '../base/controller-base';
 export class PoRepController extends ControllerBase {
   constructor(
     @Inject(CACHE_MANAGER) private _cacheManager: Cache,
-    private readonly prismaService: PrismaService,
     private readonly poRepService: PoRepService,
   ) {
     super();

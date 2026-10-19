@@ -16,26 +16,6 @@ datasource db {
   provider = "postgresql"
 }
 
-model provider {
-  id                String @id
-  num_of_deals      Int
-  total_deal_size   BigInt
-  num_of_clients    Int
-  last_deal_height  Int
-  first_deal_height Int    @default(0)
-}
-
-model client_provider_distribution {
-  client           String
-  provider         String
-  total_deal_size  BigInt
-  unique_data_size BigInt
-  claims_count     BigInt?
-
-  @@id([client, provider])
-  @@index([provider])
-}
-
 model ipni_publisher_advertisement {
   id             String  @id
   previous_id    String? @unique
@@ -70,17 +50,17 @@ model po_rep_indexer_run {
 // Defaults are there to insert providers based on registration event which
 // contains only the ID. Rest of the field will get updated based on other events
 model po_rep_storage_provider {
-  providerId             BigInt                                @id
-  organization           String                                @default("0x0000000000000000000000000000000000000000")
-  payee                  String                                @default("0x0000000000000000000000000000000000000000")
-  paused                 Boolean                               @default(false)
-  blocked                Boolean                               @default(false)
-  availableBytes         BigInt                                @default(0)
-  committedBytes         BigInt                                @default(0)
-  pendingBytes           BigInt                                @default(0)
-  pricePerSectorPerMonth Decimal                               @default(0) @db.Decimal(78, 0)
-  minDealDurationDays    Int                                   @default(0)
-  maxDealDurationDays    Int                                   @default(0)
+  providerId             BigInt         @id
+  organization           String         @default("0x0000000000000000000000000000000000000000")
+  payee                  String         @default("0x0000000000000000000000000000000000000000")
+  paused                 Boolean        @default(false)
+  blocked                Boolean        @default(false)
+  availableBytes         BigInt         @default(0)
+  committedBytes         BigInt         @default(0)
+  pendingBytes           BigInt         @default(0)
+  pricePerSectorPerMonth Decimal        @default(0) @db.Decimal(78, 0)
+  minDealDurationDays    Int            @default(0)
+  maxDealDurationDays    Int            @default(0)
   registeredAtBlock      BigInt
   deals                  po_rep_deal[]
   offers                 po_rep_offer[]

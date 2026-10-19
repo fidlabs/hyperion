@@ -7,11 +7,9 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { TerminusModule } from '@nestjs/terminus';
 import axios from 'axios';
 import axiosBetterStacktrace from 'axios-better-stacktrace';
-import { AggregationTasksService } from './aggregation/aggregation-tasks.service';
 import { AppController } from './controller/app/app.controller';
 import { FilecoinPayController } from './controller/filecoin-pay/filecoin-pay.controller';
 import { PoRepController } from './controller/po-rep/po-rep.controller';
-import { StorageProvidersController } from './controller/storage-providers/storage-providers.controller';
 import { PostgresService } from './db/postgres.service';
 import { PrismaService } from './db/prisma.service';
 import { IpniAdvertisementFetcherJobService } from './jobs/ipni-advertisement-fetcher-job/ipni-advertisement-fetcher-job.service';
@@ -19,22 +17,15 @@ import { ErrorHandlerMiddleware } from './middleware/error-handler.middleware';
 import { RequestLoggerMiddleware } from './middleware/request-logger.middleware';
 import { PoRepIndexerModule } from './po-rep-indexer';
 import { PrometheusMetricModule } from './prometheus';
-import { StorageProviderService } from './service/storage-provider/storage-provider.service';
-
 import { CidContactService } from './service/cid-contact/cid-contact.service';
 import { ERC20TokenInfoService } from './service/erc20-token-info/erc20-token-info.service';
 import { EthApiService } from './service/eth-api/eth-api.service';
-import { IpniMisreportingCheckerService } from './service/ipni-misreporting-checker/ipni-misreporting-checker.service';
-import { LocationService } from './service/location/location.service';
 import { LotusApiService } from './service/lotus-api/lotus-api.service';
 import { PoRepPriceOracleService } from './service/po-rep-price-oracle/po-rep-price-oracle.service';
 import { PoRepService } from './service/po-rep/po-rep.service';
-
 import { queryBuilderProviders } from './db';
-
-const AGGREGATION_RUNNERS = [];
-
-const AGGREGATION_RUNNERS_RUN_ONLY = [];
+import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-runner/ipni-reporting-daily-runner.service';
+import { IPNIController } from 'src/controller/ipni/ipni.controller';
 
 @Module({
   imports: [
@@ -47,25 +38,19 @@ const AGGREGATION_RUNNERS_RUN_ONLY = [];
     PoRepIndexerModule,
   ],
   controllers: [
-    StorageProvidersController,
     PoRepController,
     FilecoinPayController,
     AppController,
+    IPNIController,
   ],
   providers: [
-    ...(AGGREGATION_RUNNERS_RUN_ONLY.length
-      ? AGGREGATION_RUNNERS_RUN_ONLY
-      : AGGREGATION_RUNNERS),
-    AggregationTasksService,
     IpniAdvertisementFetcherJobService,
+    IpniReportingDailyRunnerService,
     PrismaService,
-    StorageProviderService,
     CidContactService,
-    LocationService,
     ERC20TokenInfoService,
     EthApiService,
     LotusApiService,
-    IpniMisreportingCheckerService,
     PostgresService,
     PoRepPriceOracleService,
     PoRepService,
@@ -78,13 +63,6 @@ const AGGREGATION_RUNNERS_RUN_ONLY = [];
         axiosBetterStacktrace(axiosInstance);
         return axiosInstance;
       },
-    },
-    {
-      provide: 'AggregationRunner',
-      useFactory: (...runners) => runners,
-      inject: AGGREGATION_RUNNERS_RUN_ONLY.length
-        ? AGGREGATION_RUNNERS_RUN_ONLY
-        : AGGREGATION_RUNNERS,
     },
     ...queryBuilderProviders,
   ],

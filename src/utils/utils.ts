@@ -66,7 +66,7 @@ export function envSet(value?: any): boolean {
   return !envNotSet(value);
 }
 
-export async function sleep(ms: number): Promise<void> {
+export async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
