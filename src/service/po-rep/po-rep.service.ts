@@ -1,7 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { groupBy, orderBy, uniq } from 'lodash';
 import { DateTime } from 'luxon';
-import { Prisma as PrismaRuntime } from '../../generated/prisma/client';
+import {
+  PoRepDealState,
+  Prisma as PrismaRuntime,
+} from '../../generated/prisma/client';
 import { InjectQueryBuilder, QueryBuilder } from 'src/db';
 import { PrismaService } from 'src/db/prisma.service';
 import {
@@ -15,6 +18,12 @@ import { createPoRepDealsQuery } from 'src/db/queries/po-rep-deals.query';
 import { createPoRepOnboardedDataHistoryQuery } from 'src/db/queries/po-rep-onboarded-data-history.query';
 import { createPoRepProviderEconomicsStatisticsQuery } from 'src/db/queries/po-rep-provider-economics-statistics.query';
 import { createPoRepProviderStorageStatisticsQuery } from 'src/db/queries/po-rep-provider-storage-statistics.query';
+import {
+  createPoRepProvidersDataByDealTypeQuery,
+  createPoRepProvidersDealsStatesQuery,
+  createPoRepProvidersRevenueQuery,
+  createPoRepProvidersStatisticsQuery,
+} from 'src/db/queries/po-rep-providers.query';
 import { PoRepPublicClient, RECENT_NODE_CLIENT } from 'src/po-rep-indexer';
 import {
   dateToFilecoinBlockHeight,
@@ -43,8 +52,12 @@ import {
   PoRepDealsValueHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
+  PoRepProvider,
   PoRepProviderEconomicsStatistics,
+  PoRepProvidersList,
+  PoRepProvidersListParameters,
   PoRepProviderStorageStatistics,
+  PoRepProviderTokenRevenue,
 } from './types.po-rep';
 import { ERC20TokenInfoService } from '../erc20-token-info/erc20-token-info.service';
 
@@ -469,6 +482,49 @@ export class PoRepService {
     return client ?? null;
   }
 
+  public async getProvidersList({
+    activeOnly,
+    sort = 'revenueUSD',
+    order = 'desc',
+    limit = 0,
+    page = 1,
+  }: PoRepProvidersListParameters): Promise<PoRepProvidersList> {
+    const providers = await this.getProvidersAggregates();
+    const filteredProviders = stringToBool(activeOnly)
+      ? providers.filter((provider) => provider.active)
+      : providers;
+    const sortedProviders = orderBy(
+      filteredProviders,
+      [
+        (provider) => provider[sort] === null,
+        (provider) => provider[sort],
+        (provider) => provider.providerId.toBigInt(),
+      ],
+      ['asc', order, 'asc'],
+    );
+
+    const totalCount = sortedProviders.length;
+    const pagesCount = limit ? Math.ceil(totalCount / limit) : 1;
+
+    return {
+      data: limit
+        ? sortedProviders.slice((page - 1) * limit, page * limit)
+        : sortedProviders,
+      pagination: {
+        page: page,
+        pagesCount: pagesCount,
+        totalCount: totalCount,
+      },
+    };
+  }
+
+  public async getProvider(
+    providerId: F0Id | F0IdInput,
+  ): Promise<PoRepProvider | null> {
+    const [provider] = await this.getProvidersAggregates(providerId);
+    return provider ?? null;
+  }
+
   public async getDealsDoneCountUpToDate(upToDate?: Date): Promise<number> {
     const cutoffBlock = dateToFilecoinBlockHeight(
       upToDate ?? DateTime.utc().toJSDate(),
@@ -679,6 +735,181 @@ export class PoRepService {
         tokens: tokens,
         firstDealAt: this.epochToDate(BigInt(result.first_deal_epoch)),
         lastDealAt: this.epochToDate(BigInt(result.last_deal_epoch)),
+      });
+    });
+  }
+
+  private async getProvidersAggregates(
+    providerId: F0Id | F0IdInput | null = null,
+  ): Promise<PoRepProvider[]> {
+    const now = DateTime.utc();
+    const currentPeriodStartEpoch = dateToFilecoinBlockHeight(
+      now.minus({ days: 90 }).toJSDate(),
+      { testnet: this.isTestnet() },
+    );
+    const previousPeriodStartEpoch = dateToFilecoinBlockHeight(
+      now.minus({ days: 180 }).toJSDate(),
+      { testnet: this.isTestnet() },
+    );
+
+    const [
+      registeredProviders,
+      statistics,
+      dealsStates,
+      dataByDealType,
+      revenue,
+    ] = await Promise.all([
+      this.prismaService.po_rep_storage_provider.findMany({
+        where: {
+          providerId:
+            providerId !== null ? F0Id.from(providerId).toBigInt() : undefined,
+        },
+      }),
+      createPoRepProvidersStatisticsQuery(this.queryBuilder, {
+        providersIds: providerId,
+      }).execute(),
+      createPoRepProvidersDealsStatesQuery(this.queryBuilder, {
+        providersIds: providerId,
+      }).execute(),
+      createPoRepProvidersDataByDealTypeQuery(this.queryBuilder, {
+        providersIds: providerId,
+      }).execute(),
+      createPoRepProvidersRevenueQuery(this.queryBuilder, {
+        providersIds: providerId,
+        currentPeriodStartEpoch: currentPeriodStartEpoch,
+        previousPeriodStartEpoch: previousPeriodStartEpoch,
+      }).execute(),
+    ]);
+
+    const uniqueTokens = uniq(revenue.map((item) => item.token_address));
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    const statisticsByProvider = new Map(
+      statistics.map((item) => [item.provider_id.toString(), item]),
+    );
+    const dealsStatesByProvider = groupBy(dealsStates, (item) =>
+      item.provider_id.toString(),
+    );
+    const dataByDealTypeByProvider = groupBy(dataByDealType, (item) =>
+      item.provider_id.toString(),
+    );
+    const revenueByProvider = groupBy(revenue, (item) =>
+      item.provider_id.toString(),
+    );
+
+    return registeredProviders.map((registeredProvider) => {
+      const providerKey = registeredProvider.providerId.toString();
+      const providerStatistics = statisticsByProvider.get(providerKey);
+
+      const tokens = (revenueByProvider[providerKey] ?? []).map((item) => {
+        const tokenDetails = tokensDetails.get(item.token_address);
+
+        return new PoRepProviderTokenRevenue({
+          tokenAddress: item.token_address,
+          tokenSymbol: tokenDetails.tokenSymbol,
+          tokenDecimals: tokenDetails.tokenDecimals,
+          revenueWei: BigInt(item.total_revenue.toString()),
+          currentPeriodRevenueWei: BigInt(
+            item.current_period_revenue.toString(),
+          ),
+          previousPeriodRevenueWei: BigInt(
+            item.previous_period_revenue.toString(),
+          ),
+        });
+      });
+
+      const toUSD = (
+        getAmount: (token: PoRepProviderTokenRevenue) => bigint,
+      ) => {
+        return tokens
+          .reduce((totalUSD, token) => {
+            const tokenExponent = 10n ** BigInt(token.tokenDecimals);
+
+            return totalUSD.add(
+              Decimal(getAmount(token).toString())
+                .div(tokenExponent.toString())
+                .mul(tokensExchangeRatesUSD.get(token.tokenAddress)),
+            );
+          }, Decimal(0))
+          .toDecimalPlaces(2)
+          .toNumber();
+      };
+
+      const dealsCountByState = (dealsStatesByProvider[providerKey] ?? []).map(
+        (item) => ({
+          state: item.deal_state,
+          dealsCount: stringToNumber(item.deals_count.toString()),
+        }),
+      );
+
+      const countDealsInState = (state: PoRepDealState) => {
+        return (
+          dealsCountByState.find((item) => item.state === state)?.dealsCount ??
+          0
+        );
+      };
+
+      const activeContractsCount = providerStatistics
+        ? stringToNumber(providerStatistics.active_contracts_count.toString())
+        : 0;
+      const currentPeriodRevenueUSD = toUSD(
+        (token) => token.currentPeriodRevenueWei,
+      );
+      const previousPeriodRevenueUSD = toUSD(
+        (token) => token.previousPeriodRevenueWei,
+      );
+
+      return new PoRepProvider({
+        providerId: F0Id.from(registeredProvider.providerId),
+        organization: registeredProvider.organization,
+        payee: registeredProvider.payee,
+        paused: registeredProvider.paused,
+        blocked: registeredProvider.blocked,
+        active: activeContractsCount > 0,
+        availableBytes: registeredProvider.availableBytes,
+        pendingBytes: registeredProvider.pendingBytes,
+        committedBytes: registeredProvider.committedBytes,
+        dealsCount: providerStatistics
+          ? stringToNumber(providerStatistics.deals_count.toString())
+          : 0,
+        dealsCountByState: dealsCountByState,
+        activeContractsCount: activeContractsCount,
+        dataUnderContractBytes: providerStatistics
+          ? BigInt(providerStatistics.data_under_contract_bytes.toString())
+          : 0n,
+        dataUnderContractByDealType: (
+          dataByDealTypeByProvider[providerKey] ?? []
+        ).map((item) => ({
+          dealType: item.deal_type,
+          dataUnderContractBytes: BigInt(item.bytes.toString()),
+        })),
+        failedContractsCount: countDealsInState(
+          PoRepDealState.EARLY_TERMINATED,
+        ),
+        rejectedDealsCount: countDealsInState(PoRepDealState.REJECTED),
+        expiredDealsCount: countDealsInState(PoRepDealState.EXPIRED),
+        revenueUSD: toUSD((token) => token.revenueWei),
+        currentPeriodRevenueUSD: currentPeriodRevenueUSD,
+        previousPeriodRevenueUSD: previousPeriodRevenueUSD,
+        revenueGrowth:
+          previousPeriodRevenueUSD > 0
+            ? Decimal(currentPeriodRevenueUSD)
+                .sub(previousPeriodRevenueUSD)
+                .div(previousPeriodRevenueUSD)
+                .toDecimalPlaces(4)
+                .toNumber()
+            : null,
+        tokens: tokens,
+        registeredAt: this.epochToDate(registeredProvider.registeredAtBlock),
+        firstDealAt: providerStatistics
+          ? this.epochToDate(BigInt(providerStatistics.first_deal_epoch))
+          : null,
+        lastDealAt: providerStatistics
+          ? this.epochToDate(BigInt(providerStatistics.last_deal_epoch))
+          : null,
       });
     });
   }

@@ -29,6 +29,10 @@ import {
   PoRepDealsValueHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
+  PoRepProvider,
+  PoRepProviderParameters,
+  PoRepProvidersList,
+  PoRepProvidersListParameters,
 } from 'src/service/po-rep/types.po-rep';
 import { ControllerBase } from '../base/controller-base';
 
@@ -139,5 +143,52 @@ export class PoRepController extends ControllerBase {
     }
 
     return client;
+  }
+
+  @Get('/providers')
+  @UseInterceptors(ClassSerializerInterceptor)
+  @ApiOperation({
+    summary:
+      'Get list of storage providers registered in SP Registry with their aggregates',
+  })
+  @ApiOkResponse({
+    type: PoRepProvidersList,
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  public getProviders(
+    @Query(new ValidationPipe({ transform: true }))
+    query: PoRepProvidersListParameters,
+  ): Promise<PoRepProvidersList> {
+    return this.poRepService.getProvidersList(query);
+  }
+
+  @Get('/providers/:providerId')
+  @UseInterceptors(ClassSerializerInterceptor)
+  @ApiOperation({
+    summary: 'Get aggregates of a single storage provider',
+  })
+  @ApiOkResponse({
+    type: PoRepProvider,
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid provider id',
+  })
+  @ApiNotFoundResponse({
+    description: 'Provider is not registered in SP Registry',
+  })
+  public async getProvider(
+    @Param(new ValidationPipe()) { providerId }: PoRepProviderParameters,
+  ): Promise<PoRepProvider> {
+    const provider = await this.poRepService.getProvider(providerId);
+
+    if (!provider) {
+      throw new NotFoundException(
+        `PoRep provider with id "${providerId}" does not exist`,
+      );
+    }
+
+    return provider;
   }
 }
