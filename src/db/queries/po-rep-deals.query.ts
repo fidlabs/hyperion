@@ -13,6 +13,7 @@ type F0IdLike = Parameters<typeof F0Id.from>[0];
 export interface CreatePoRepDealsQueryParameters {
   providersIds?: F0IdLike | F0IdLike[] | null;
   railStates?: RailState | RailState[] | null;
+  clientsAddresses?: string | string[] | null;
   activeOnly?: boolean;
 }
 
@@ -24,6 +25,7 @@ export function createPoRepDealsQuery(
   qb: QueryBuilder,
   {
     activeOnly = false,
+    clientsAddresses,
     providersIds,
     railStates,
   }: CreatePoRepDealsQueryParameters = {},
@@ -41,6 +43,7 @@ export function createPoRepDealsQuery(
           'd.providerId as provider_id',
           'd.client as client_address',
           'd.state as deal_state',
+          'd.manifestHash as manifest_hash',
           'd.dealType as deal_type',
           'd.totalDealSize as deal_size_bytes',
           'd.railId as rail_id',
@@ -114,6 +117,7 @@ export function createPoRepDealsQuery(
           'r.total_settlements_count',
           'r.total_amount_settled',
           'r.last_settlement_epoch',
+          'r.locked_amount',
           'd.proposedAtBlock as deal_created_at_epoch',
         ])
         .where((eb) =>
@@ -122,6 +126,9 @@ export function createPoRepDealsQuery(
             providersIds,
             mapF0IdLike,
           ),
+        )
+        .where((eb) =>
+          createGenericStringFilter(eb.ref('d.client'), clientsAddresses),
         ),
     )
     .selectFrom('deal_data')
