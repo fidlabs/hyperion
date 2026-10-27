@@ -4,12 +4,23 @@ import {
   Controller,
   Get,
   Inject,
+  NotFoundException,
+  Param,
   Query,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+} from '@nestjs/swagger';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
+  PoRepClient,
+  PoRepClientParameters,
+  PoRepClientsList,
+  PoRepClientsListParameters,
   PoRepDealsList,
   PoRepDealsListParameters,
   PoRepDealsPaymentsHistoryEntry,
@@ -81,5 +92,52 @@ export class PoRepController extends ControllerBase {
     query: PoRepDealsPaymentsHistoryParameters,
   ): Promise<PoRepDealsPaymentsHistoryEntry[]> {
     return this.poRepService.getDealsPaymentsSummaryHistory(query);
+  }
+
+  @Get('/clients')
+  @UseInterceptors(ClassSerializerInterceptor)
+  @ApiOperation({
+    summary:
+      'Get list of PoRep market clients (payer wallets) with their aggregates',
+  })
+  @ApiOkResponse({
+    type: PoRepClientsList,
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  public getClients(
+    @Query(new ValidationPipe({ transform: true }))
+    query: PoRepClientsListParameters,
+  ): Promise<PoRepClientsList> {
+    return this.poRepService.getClients(query);
+  }
+
+  @Get('/clients/:clientAddress')
+  @UseInterceptors(ClassSerializerInterceptor)
+  @ApiOperation({
+    summary: 'Get aggregates of a single PoRep market client (payer wallet)',
+  })
+  @ApiOkResponse({
+    type: PoRepClient,
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid client address',
+  })
+  @ApiNotFoundResponse({
+    description: 'Client has no PoRep market deals',
+  })
+  public async getClient(
+    @Param(new ValidationPipe()) { clientAddress }: PoRepClientParameters,
+  ): Promise<PoRepClient> {
+    const client = await this.poRepService.getClient(clientAddress);
+
+    if (!client) {
+      throw new NotFoundException(
+        `PoRep client with address "${clientAddress}" does not exist`,
+      );
+    }
+
+    return client;
   }
 }

@@ -101,6 +101,7 @@ model po_rep_deal {
   client           String
   state            PoRepDealState
   dealType         PoRepDealType              @default(NONE)
+  manifestHash     String?
   manifestLocation String
   totalDealSize    BigInt
   proposedAtBlock  BigInt
@@ -110,6 +111,8 @@ model po_rep_deal {
   provider         po_rep_storage_provider    @relation(fields: [providerId], references: [providerId])
   offer            po_rep_offer               @relation(fields: [offerId], references: [offerId])
   stateChanges     po_rep_deal_state_change[]
+
+  @@index([client, manifestHash])
 }
 
 model po_rep_deal_requirements {

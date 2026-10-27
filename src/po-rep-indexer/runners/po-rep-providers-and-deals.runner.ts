@@ -522,6 +522,7 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
             client: log.args.client,
             state: PoRepDealState.ACCEPTED,
             dealType: this.resolveDealType(deal.dealType),
+            manifestHash: log.args.manifestHash,
             manifestLocation: log.args.manifestLocation,
             totalDealSize: log.args.totalDealSize,
             proposedAtBlock: log.args.proposedAtBlock,

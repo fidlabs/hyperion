@@ -1,9 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { groupBy, uniq } from 'lodash';
+import { groupBy, orderBy, uniq } from 'lodash';
 import { DateTime } from 'luxon';
 import { Prisma as PrismaRuntime } from '../../generated/prisma/client';
 import { InjectQueryBuilder, QueryBuilder } from 'src/db';
 import { PrismaService } from 'src/db/prisma.service';
+import {
+  createPoRepClientsDealsStatesQuery,
+  createPoRepClientsSpendQuery,
+  createPoRepClientsStatisticsQuery,
+} from 'src/db/queries/po-rep-clients.query';
 import { createPoRepDealsPaymentsHistoryQuery } from 'src/db/queries/po-rep-deals-payments-history.query';
 import { createPoRepDealsValueHistoryQuery } from 'src/db/queries/po-rep-deals-value-history.query';
 import { createPoRepDealsQuery } from 'src/db/queries/po-rep-deals.query';
@@ -20,10 +25,15 @@ import {
   stringToNumber,
 } from 'src/utils/utils';
 import { F0IdInput } from 'src/utils/validators';
+import { getAddress } from 'viem';
 import { filecoinCalibration } from 'viem/chains';
 import { PoRepPriceOracleService } from '../po-rep-price-oracle/po-rep-price-oracle.service';
 import {
   DealRailState,
+  PoRepClient,
+  PoRepClientsList,
+  PoRepClientsListParameters,
+  PoRepClientTokenSpend,
   PoRepDeal,
   PoRepDealsList,
   PoRepDealsListParameters,
@@ -59,6 +69,7 @@ export class PoRepService {
 
   public async getDeals({
     providerId = null,
+    clientAddress = null,
     railState = null,
     pieceCid = null,
     activeOnly,
@@ -69,6 +80,8 @@ export class PoRepService {
   }: PoRepDealsListParameters): Promise<PoRepDealsList> {
     let baseQuery = createPoRepDealsQuery(this.queryBuilder, {
       providersIds: providerId,
+      clientsAddresses:
+        clientAddress !== null ? getAddress(clientAddress) : null,
       railStates: railState,
       activeOnly: Boolean(stringToBool(activeOnly)),
     });
@@ -317,6 +330,7 @@ export class PoRepService {
   public async getDealsPaymentsSummaryHistory({
     netAmounts = 'true',
     providerId = null,
+    clientAddress = null,
     windowSize = 'day',
   }: PoRepDealsPaymentsHistoryParameters): Promise<
     PoRepDealsPaymentsHistoryEntry[]
@@ -325,12 +339,11 @@ export class PoRepService {
       orderBy: {
         proposedAtBlock: 'asc',
       },
-      where:
-        providerId !== null
-          ? {
-              providerId: F0Id.from(providerId).toBigInt(),
-            }
-          : undefined,
+      where: {
+        providerId:
+          providerId !== null ? F0Id.from(providerId).toBigInt() : undefined,
+        client: clientAddress !== null ? getAddress(clientAddress) : undefined,
+      },
     });
 
     if (!earliestDeal) {
@@ -354,6 +367,8 @@ export class PoRepService {
       }),
       netAmount: stringToBool(netAmounts),
       providersIds: providerId,
+      clientsAddresses:
+        clientAddress !== null ? getAddress(clientAddress) : null,
       windowSize: windowSize,
     }).execute();
 
@@ -415,6 +430,43 @@ export class PoRepService {
 
       return [...result, nextEntry];
     }, []);
+  }
+
+  public async getClients({
+    activeOnly,
+    sort = 'spendUSD',
+    order = 'desc',
+    limit = 0,
+    page = 1,
+  }: PoRepClientsListParameters): Promise<PoRepClientsList> {
+    const clients = await this.getClientsAggregates();
+    const filteredClients = stringToBool(activeOnly)
+      ? clients.filter((client) => client.active)
+      : clients;
+    const sortedClients = orderBy(
+      filteredClients,
+      [(client) => client[sort], (client) => client.clientAddress],
+      [order, 'asc'],
+    );
+
+    const totalCount = sortedClients.length;
+    const pagesCount = limit ? Math.ceil(totalCount / limit) : 1;
+
+    return {
+      data: limit
+        ? sortedClients.slice((page - 1) * limit, page * limit)
+        : sortedClients,
+      pagination: {
+        page: page,
+        pagesCount: pagesCount,
+        totalCount: totalCount,
+      },
+    };
+  }
+
+  public async getClient(clientAddress: string): Promise<PoRepClient | null> {
+    const [client] = await this.getClientsAggregates(getAddress(clientAddress));
+    return client ?? null;
   }
 
   public async getDealsDoneCountUpToDate(upToDate?: Date): Promise<number> {
@@ -541,6 +593,94 @@ export class PoRepService {
       },
       [],
     );
+  }
+
+  private async getClientsAggregates(
+    clientAddress: string | null = null,
+  ): Promise<PoRepClient[]> {
+    const [statistics, dealsStates, spend] = await Promise.all([
+      createPoRepClientsStatisticsQuery(this.queryBuilder, {
+        clientsAddresses: clientAddress,
+      }).execute(),
+      createPoRepClientsDealsStatesQuery(this.queryBuilder, {
+        clientsAddresses: clientAddress,
+      }).execute(),
+      createPoRepClientsSpendQuery(this.queryBuilder, {
+        clientsAddresses: clientAddress,
+      }).execute(),
+    ]);
+
+    const uniqueTokens = uniq(
+      spend.map((item) => item.token_address).filter((item) => item !== null),
+    );
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    const dealsStatesByClient = groupBy(dealsStates, 'client_address');
+    const spendByClient = groupBy(spend, 'client_address');
+
+    return statistics.map((result) => {
+      const tokens = (spendByClient[result.client_address] ?? []).map(
+        (item) => {
+          const tokenDetails = tokensDetails.get(item.token_address);
+          const settledWei = BigInt(item.total_amount_settled.toString());
+          const lockedWei = BigInt(item.total_amount_locked.toString());
+
+          return new PoRepClientTokenSpend({
+            tokenAddress: item.token_address,
+            tokenSymbol: tokenDetails.tokenSymbol,
+            tokenDecimals: tokenDetails.tokenDecimals,
+            settledWei: settledWei,
+            lockedWei: lockedWei,
+            spendWei: settledWei + lockedWei,
+          });
+        },
+      );
+
+      const toUSD = (getAmount: (token: PoRepClientTokenSpend) => bigint) => {
+        return tokens
+          .reduce((totalUSD, token) => {
+            const tokenExponent = 10n ** BigInt(token.tokenDecimals);
+
+            return totalUSD.add(
+              Decimal(getAmount(token).toString())
+                .div(tokenExponent.toString())
+                .mul(tokensExchangeRatesUSD.get(token.tokenAddress)),
+            );
+          }, Decimal(0))
+          .toDecimalPlaces(2)
+          .toNumber();
+      };
+
+      const activeContractsCount = stringToNumber(
+        result.active_contracts_count.toString(),
+      );
+
+      return new PoRepClient({
+        clientAddress: result.client_address,
+        active: activeContractsCount > 0,
+        dealsCount: stringToNumber(result.deals_count.toString()),
+        dealsCountByState: (
+          dealsStatesByClient[result.client_address] ?? []
+        ).map((item) => ({
+          state: item.deal_state,
+          dealsCount: stringToNumber(item.deals_count.toString()),
+        })),
+        activeContractsCount: activeContractsCount,
+        renewalsCount: stringToNumber(result.renewals_count.toString()),
+        storagePurchasedBytes: BigInt(
+          result.storage_purchased_bytes.toString(),
+        ),
+        settledUSD: toUSD((token) => token.settledWei),
+        lockedUSD: toUSD((token) => token.lockedWei),
+        spendUSD: toUSD((token) => token.spendWei),
+        tokens: tokens,
+        firstDealAt: this.epochToDate(BigInt(result.first_deal_epoch)),
+        lastDealAt: this.epochToDate(BigInt(result.last_deal_epoch)),
+      });
+    });
   }
 
   private isTestnet(): boolean {

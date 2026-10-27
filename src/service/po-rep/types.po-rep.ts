@@ -3,6 +3,7 @@ import { Transform, TransformFnParams } from 'class-transformer';
 import {
   IsBooleanString,
   IsEnum,
+  IsEthereumAddress,
   IsIn,
   IsInt,
   IsOptional,
@@ -115,6 +116,16 @@ export class PoRepDealsListParameters extends PaginationParameters {
   @IsOptional()
   @IsF0IdInput()
   providerId?: F0IdInput;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional filter by client (payer wallet) EVM address, case insensitive',
+    type: 'string',
+    required: false,
+  })
+  @IsOptional()
+  @IsEthereumAddress()
+  clientAddress?: string;
 
   @ApiPropertyOptional({
     description:
@@ -582,6 +593,16 @@ export class PoRepDealsPaymentsHistoryParameters extends PoRepHistoryParameters 
   @IsF0IdInput()
   @IsOptional()
   providerId?: F0IdInput;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional filter by client (payer wallet) EVM address, case insensitive',
+    type: 'string',
+    required: false,
+  })
+  @IsOptional()
+  @IsEthereumAddress()
+  clientAddress?: string;
 }
 
 export class PoRepDealsValueHistoryParameters extends PoRepHistoryParameters {
@@ -593,4 +614,223 @@ export class PoRepDealsValueHistoryParameters extends PoRepHistoryParameters {
   @IsF0IdInput()
   @IsOptional()
   providerId?: F0IdInput;
+}
+
+// Clients
+const clientsAvailableSortingKeys = [
+  'spendUSD',
+  'settledUSD',
+  'lockedUSD',
+  'storagePurchasedBytes',
+  'activeContractsCount',
+  'dealsCount',
+  'renewalsCount',
+  'firstDealAt',
+  'lastDealAt',
+] as const;
+
+export type PoRepClientsSortingKey =
+  (typeof clientsAvailableSortingKeys)[number];
+
+export class PoRepClientsListParameters extends PaginationParameters {
+  @ApiPropertyOptional({
+    description: `Set to true to show active clients only. Client is
+      considered active when it has at least one active contract (deal in
+      ${PoRepDealState.ACTIVE} state with payment rail in
+      ${DealRailState.ACTIVE} or ${DealRailState.TERMINATED} state).`,
+    required: false,
+  })
+  @IsOptional()
+  @IsBooleanString()
+  activeOnly?: 'true' | 'false';
+
+  @ApiPropertyOptional({
+    description:
+      'Optional sorting key, if not provided clients will be sorted by spend descending',
+    enumName: 'ClientsListSortingKey',
+    enum: clientsAvailableSortingKeys,
+    required: false,
+    default: 'spendUSD',
+  })
+  @IsOptional()
+  @IsIn(clientsAvailableSortingKeys)
+  sort?: PoRepClientsSortingKey;
+
+  @ApiPropertyOptional({
+    description: 'Optional sorting direction, "desc" by default',
+    enumName: 'ClientsListSortingDirection',
+    enum: ['asc', 'desc'],
+    required: false,
+    default: 'desc',
+  })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  order?: 'asc' | 'desc';
+}
+
+export class PoRepClientParameters {
+  @ApiProperty({
+    description: 'Client (payer wallet) EVM address, case insensitive',
+    type: 'string',
+  })
+  @IsEthereumAddress()
+  clientAddress: string;
+}
+
+export class PoRepClientTokenSpend {
+  @ApiProperty({
+    description: 'Address of ERC20 token used for payment rails',
+  })
+  tokenAddress: string;
+
+  @ApiProperty({
+    description: 'Symbol of ERC20 token used for payment rails',
+  })
+  tokenSymbol: string;
+
+  @ApiProperty({
+    description: 'Number of decimal places of ERC20 token',
+  })
+  tokenDecimals: number;
+
+  @ApiProperty({
+    description: `Total amount settled on client's PoRep market rails in that
+      token, in Wei (smallest non-dividable unit of the token). Includes
+      network fees and operator commission.`,
+    type: 'string',
+  })
+  settledWei: bigint;
+
+  @ApiProperty({
+    description: `Amount currently locked on client's PoRep market rails in
+      that token, in Wei (smallest non-dividable unit of the token).`,
+    type: 'string',
+  })
+  lockedWei: bigint;
+
+  @ApiProperty({
+    description: 'Settled plus locked amount, in Wei',
+    type: 'string',
+  })
+  spendWei: bigint;
+
+  constructor(tokenSpend: PoRepClientTokenSpend) {
+    Object.assign(this, tokenSpend);
+  }
+}
+
+export class PoRepClientDealsCountByState {
+  @ApiProperty({
+    description: 'Deal state',
+    enum: PoRepDealState,
+    enumName: 'PoRepDealState',
+  })
+  state: PoRepDealState;
+
+  @ApiProperty({
+    description: 'Number of client deals in that state',
+  })
+  dealsCount: number;
+}
+
+export class PoRepClient {
+  @ApiProperty({
+    description: `EVM address of the client. Client is a single payer wallet,
+      in PoRep market payment rails are always created with deal client as
+      the payer.`,
+  })
+  clientAddress: string;
+
+  @ApiProperty({
+    description: `Flag telling if client has at least one active contract,
+      eg. at least one streaming payment rail.`,
+  })
+  active: boolean;
+
+  @ApiProperty({
+    description: 'Total count of deals made by the client, in any state',
+  })
+  dealsCount: number;
+
+  @ApiProperty({
+    description: 'Count of client deals in each deal state',
+    type: [PoRepClientDealsCountByState],
+  })
+  dealsCountByState: PoRepClientDealsCountByState[];
+
+  @ApiProperty({
+    description: `Count of active contracts, eg. deals in
+      ${PoRepDealState.ACTIVE} state with payment rail in
+      ${DealRailState.ACTIVE} or ${DealRailState.TERMINATED} state.`,
+  })
+  activeContractsCount: number;
+
+  @ApiProperty({
+    description: `Count of renewed deals. Deal is a renewal when the same
+      client made an earlier deal for the same manifest hash, that was already
+      ${PoRepDealState.ACTIVE} when the renewal got proposed. Rejected deals
+      are not counted.`,
+  })
+  renewalsCount: number;
+
+  @ApiProperty({
+    description: `Total size in bytes of client deals, for which data was
+      onboarded and payment rail got activated.`,
+    type: 'string',
+  })
+  storagePurchasedBytes: bigint;
+
+  @ApiProperty({
+    description: `Total amount settled on client's PoRep market rails, in USD.
+      Includes network fees and operator commission.`,
+  })
+  settledUSD: number;
+
+  @ApiProperty({
+    description: `Amount currently locked on client's PoRep market rails, in
+      USD.`,
+  })
+  lockedUSD: number;
+
+  @ApiProperty({
+    description: 'Spend to date, settled plus locked amount, in USD',
+  })
+  spendUSD: number;
+
+  @ApiProperty({
+    description: 'Settled and locked amounts per payment token',
+    type: [PoRepClientTokenSpend],
+  })
+  tokens: PoRepClientTokenSpend[];
+
+  @ApiProperty({
+    description: `ISO Datetime of the first deal proposal made by client`,
+  })
+  @Transform(({ value }) => (value as Date).toISOString())
+  firstDealAt: Date;
+
+  @ApiProperty({
+    description: `ISO Datetime of the latest deal proposal made by client`,
+  })
+  @Transform(({ value }) => (value as Date).toISOString())
+  lastDealAt: Date;
+
+  constructor(client: PoRepClient) {
+    Object.assign(this, client);
+  }
+}
+
+export class PoRepClientsList {
+  @ApiProperty({
+    description:
+      'Paginated and sorted list of clients matching provided parameters.',
+    type: [PoRepClient],
+  })
+  data: PoRepClient[];
+
+  @ApiProperty({
+    description: 'Pagination metadata',
+    type: PaginationMetadata,
+  })
+  pagination: PaginationMetadata;
 }
