@@ -10,6 +10,7 @@ export interface PoRepDealsPaymentsHistoryQueryParameters {
   genesisTimestamp: number | bigint;
   netAmount: boolean;
   providersIds?: F0IdLike | F0IdLike[] | null;
+  clientsAddresses?: string | string[] | null;
   windowSize: 'day' | 'week' | 'month';
 }
 
@@ -35,6 +36,7 @@ export function createPoRepDealsPaymentsHistoryQuery(
     genesisTimestamp,
     netAmount,
     providersIds,
+    clientsAddresses,
     windowSize,
   }: PoRepDealsPaymentsHistoryQueryParameters,
 ) {
@@ -62,6 +64,9 @@ export function createPoRepDealsPaymentsHistoryQuery(
         providersIds,
         mapF0IdLike,
       ),
+    )
+    .where((eb) =>
+      createGenericStringFilter(eb.ref('d.client'), clientsAddresses),
     )
     .groupBy(['window_start', 'token_address'])
     .orderBy('window_start', 'asc');
