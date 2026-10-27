@@ -45,6 +45,34 @@ export function createFilecoinPayRailsQuery(qb: QueryBuilder) {
         .coalesce(eb.fn.count<string | number | bigint>('p.id'), eb.lit(0))
         .as('total_settlements_count'),
       eb.fn.max('p.createdAtBlock').as('last_settlement_epoch'),
+      eb
+        .case()
+        .when('r.finalized', '=', true)
+        .then('0')
+        .when('r.endEpoch', '>', '0')
+        .then(
+          eb(
+            'r.lockupFixed',
+            '+',
+            eb(
+              'r.paymentRate',
+              '*',
+              eb.fn<string>('greatest', [
+                eb('r.endEpoch', '-', eb.ref('r.settledUpTo')),
+                eb.val('0'),
+              ]),
+            ),
+          ),
+        )
+        .else(
+          eb(
+            'r.lockupFixed',
+            '+',
+            eb('r.paymentRate', '*', eb.ref('r.lockupPeriod')),
+          ),
+        )
+        .end()
+        .as('locked_amount'),
     ])
     .groupBy('r.railId');
 }
