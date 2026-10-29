@@ -1,13 +1,9 @@
-import { sql } from 'kysely';
-import { PoRepDealState, PoRepDealType } from '../auto-generated/enums';
+import { PoRepDealState } from '../auto-generated/enums';
 import { QueryBuilder } from '../query-builder';
-import { createGenericStringFilter } from './helpers/create-generic-string-filter.helper';
-import { createPoRepDealsQuery } from './po-rep-deals.query';
 
 export interface CreatePoRepOverviewQueryParameters {
   periodStartEpoch: number | null;
   periodEndEpoch: number;
-  dealTypes?: PoRepDealType | PoRepDealType[] | null;
 }
 
 const endedDealStates = [
@@ -19,12 +15,9 @@ const endedDealStates = [
 export function createPoRepOverviewStatisticsQuery(
   qb: QueryBuilder,
   {
-    periodStartEpoch,
     periodEndEpoch,
-    dealTypes,
-  }: CreatePoRepOverviewQueryParameters,
+  }: Pick<CreatePoRepOverviewQueryParameters, 'periodEndEpoch'>,
 ) {
-  const periodStart = (periodStartEpoch ?? 0).toString();
   const periodEnd = periodEndEpoch.toString();
 
   return qb
@@ -36,8 +29,6 @@ export function createPoRepOverviewStatisticsQuery(
           'd.dealId as deal_id',
           'd.client as client_address',
           'd.providerId as provider_id',
-          'd.totalDealSize as deal_size_bytes',
-          'd.proposedAtBlock as deal_created_at_epoch',
           eb.fn
             .min('sc.changed_at_block')
             .filterWhere('sc.state', '=', PoRepDealState.ACTIVE)
@@ -48,21 +39,14 @@ export function createPoRepOverviewStatisticsQuery(
             .as('ended_at_epoch'),
         ])
         .where('d.proposedAtBlock', '<=', periodEnd)
-        .where((eb) =>
-          createGenericStringFilter(eb.ref('d.dealType'), dealTypes),
-        )
         .groupBy('d.dealId'),
     )
     .with('deal_period_data', (db) =>
       db
         .selectFrom('deal_activity')
         .select((eb) => [
-          'deal_id',
           'client_address',
           'provider_id',
-          'deal_size_bytes',
-          'deal_created_at_epoch',
-          'activated_at_epoch',
           eb
             .and([
               eb('activated_at_epoch', '<=', periodEnd),
@@ -72,12 +56,6 @@ export function createPoRepOverviewStatisticsQuery(
               ]),
             ])
             .as('active'),
-          eb
-            .and([
-              eb('activated_at_epoch', '>', periodStart),
-              eb('activated_at_epoch', '<=', periodEnd),
-            ])
-            .as('activated_in_period'),
         ]),
     )
     .selectFrom('deal_period_data')
@@ -93,39 +71,12 @@ export function createPoRepOverviewStatisticsQuery(
         .distinct()
         .filterWhere('active', '=', true)
         .as('active_providers_count'),
-      eb.fn
-        .count('deal_id')
-        .filterWhere('active', '=', true)
-        .as('active_contracts_count'),
-      eb.fn
-        .coalesce(
-          eb.fn.sum('deal_size_bytes').filterWhere('active', '=', true),
-          eb.val(0),
-        )
-        .as('data_retained_bytes'),
-      eb.fn
-        .coalesce(
-          eb.fn
-            .sum('deal_size_bytes')
-            .filterWhere('activated_in_period', '=', true),
-          eb.val(0),
-        )
-        .as('storage_purchased_bytes'),
-      sql<
-        number | null
-      >`percentile_cont(0.5) within group (order by ${eb.ref('activated_at_epoch')} - ${eb.ref('deal_created_at_epoch')}) filter (where ${eb.ref('activated_in_period')})`.as(
-        'median_onboarding_epochs',
-      ),
     ]);
 }
 
 export function createPoRepOverviewSettledQuery(
   qb: QueryBuilder,
-  {
-    periodStartEpoch,
-    periodEndEpoch,
-    dealTypes,
-  }: CreatePoRepOverviewQueryParameters,
+  { periodStartEpoch, periodEndEpoch }: CreatePoRepOverviewQueryParameters,
 ) {
   return qb
     .selectFrom('filecoin_pay_payment as p')
@@ -138,19 +89,5 @@ export function createPoRepOverviewSettledQuery(
     .where('p.oneTime', '=', false)
     .where('p.createdAtBlock', '>', (periodStartEpoch ?? 0).toString())
     .where('p.createdAtBlock', '<=', periodEndEpoch.toString())
-    .where((eb) => createGenericStringFilter(eb.ref('d.dealType'), dealTypes))
     .groupBy('r.token');
-}
-
-export function createPoRepOverviewLockedQuery(
-  qb: QueryBuilder,
-  { dealTypes }: Pick<CreatePoRepOverviewQueryParameters, 'dealTypes'>,
-) {
-  return createPoRepDealsQuery(qb, { dealTypes: dealTypes })
-    .select((eb) => [
-      'token_address',
-      eb.fn.coalesce(eb.fn.sum('locked_amount'), eb.val(0)).as('amount'),
-    ])
-    .where('token_address', 'is not', null)
-    .groupBy('token_address');
 }

@@ -6,7 +6,7 @@ import {
 } from './filecoin-pay-rails.query';
 import { calcualtePredictedDealRevenue } from './helpers/calculate-predicted-deal-revenue.helper';
 import { createGenericStringFilter } from './helpers/create-generic-string-filter.helper';
-import { PoRepDealState, PoRepDealType } from '../auto-generated/enums';
+import { PoRepDealState } from '../auto-generated/enums';
 
 type F0IdLike = Parameters<typeof F0Id.from>[0];
 
@@ -14,7 +14,6 @@ export interface CreatePoRepDealsQueryParameters {
   providersIds?: F0IdLike | F0IdLike[] | null;
   railStates?: RailState | RailState[] | null;
   clientsAddresses?: string | string[] | null;
-  dealTypes?: PoRepDealType | PoRepDealType[] | null;
   activeOnly?: boolean;
 }
 
@@ -27,7 +26,6 @@ export function createPoRepDealsQuery(
   {
     activeOnly = false,
     clientsAddresses,
-    dealTypes,
     providersIds,
     railStates,
   }: CreatePoRepDealsQueryParameters = {},
@@ -131,9 +129,6 @@ export function createPoRepDealsQuery(
         )
         .where((eb) =>
           createGenericStringFilter(eb.ref('d.client'), clientsAddresses),
-        )
-        .where((eb) =>
-          createGenericStringFilter(eb.ref('d.dealType'), dealTypes),
         ),
     )
     .selectFrom('deal_data')

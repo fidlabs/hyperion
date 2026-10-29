@@ -3,7 +3,6 @@ import { groupBy, orderBy, uniq } from 'lodash';
 import { DateTime, DurationLike } from 'luxon';
 import {
   PoRepDealState,
-  PoRepDealType,
   Prisma as PrismaRuntime,
 } from '../../generated/prisma/client';
 import { InjectQueryBuilder, QueryBuilder } from 'src/db';
@@ -18,7 +17,6 @@ import { createPoRepDealsValueHistoryQuery } from 'src/db/queries/po-rep-deals-v
 import { createPoRepDealsQuery } from 'src/db/queries/po-rep-deals.query';
 import { createPoRepOnboardedDataHistoryQuery } from 'src/db/queries/po-rep-onboarded-data-history.query';
 import {
-  createPoRepOverviewLockedQuery,
   createPoRepOverviewSettledQuery,
   createPoRepOverviewStatisticsQuery,
 } from 'src/db/queries/po-rep-overview.query';
@@ -547,8 +545,6 @@ export class PoRepService {
 
   public async getOverview({
     period = '30d',
-    product = 'FCSS',
-    dealType = null,
   }: PoRepOverviewParameters): Promise<PoRepOverview> {
     const periodEnd = DateTime.utc();
     const periodDuration = overviewPeriodDurations[period];
@@ -560,26 +556,14 @@ export class PoRepService {
         : null;
 
     const [current, previous] = await Promise.all([
-      this.getOverviewStatistics({
-        periodStart: periodStart,
-        periodEnd: periodEnd,
-        dealType: dealType,
-        includeLocked: true,
-      }),
+      this.getOverviewStatistics(periodStart, periodEnd),
       periodStart !== null
-        ? this.getOverviewStatistics({
-            periodStart: previousPeriodStart,
-            periodEnd: periodStart,
-            dealType: dealType,
-            includeLocked: false,
-          })
+        ? this.getOverviewStatistics(previousPeriodStart, periodStart)
         : null,
     ]);
 
     return new PoRepOverview({
       period: period,
-      product: product,
-      dealType: dealType,
       current: current,
       previous: previous,
     });
@@ -974,17 +958,10 @@ export class PoRepService {
     });
   }
 
-  private async getOverviewStatistics({
-    periodStart,
-    periodEnd,
-    dealType,
-    includeLocked,
-  }: {
-    periodStart: DateTime | null;
-    periodEnd: DateTime;
-    dealType: PoRepDealType | null;
-    includeLocked: boolean;
-  }): Promise<PoRepOverviewStatistics> {
+  private async getOverviewStatistics(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<PoRepOverviewStatistics> {
     const periodStartEpoch =
       periodStart !== null
         ? dateToFilecoinBlockHeight(periodStart.toJSDate(), {
@@ -995,11 +972,9 @@ export class PoRepService {
       testnet: this.isTestnet(),
     });
 
-    const [statistics, providersCount, settled, locked] = await Promise.all([
+    const [statistics, providersCount, settled] = await Promise.all([
       createPoRepOverviewStatisticsQuery(this.queryBuilder, {
-        periodStartEpoch: periodStartEpoch,
         periodEndEpoch: periodEndEpoch,
-        dealTypes: dealType,
       }).executeTakeFirstOrThrow(),
       this.prismaService.po_rep_storage_provider.count({
         where: {
@@ -1011,48 +986,28 @@ export class PoRepService {
       createPoRepOverviewSettledQuery(this.queryBuilder, {
         periodStartEpoch: periodStartEpoch,
         periodEndEpoch: periodEndEpoch,
-        dealTypes: dealType,
       }).execute(),
-      includeLocked
-        ? createPoRepOverviewLockedQuery(this.queryBuilder, {
-            dealTypes: dealType,
-          }).execute()
-        : null,
     ]);
 
-    const uniqueTokens = uniq([
-      ...settled.map((item) => item.token_address),
-      ...(locked ?? []).map((item) => item.token_address),
-    ]);
+    const uniqueTokens = uniq(settled.map((item) => item.token_address));
     const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
       this.getTokensDetails(uniqueTokens),
       this.getTokensExchangeRatesUSD(uniqueTokens),
     ]);
 
-    const toUSD = (
-      amounts: {
-        token_address: string;
-        amount: string | number | bigint;
-      }[],
-    ) => {
-      return amounts
-        .reduce((totalUSD, item) => {
-          const tokenDetails = tokensDetails.get(item.token_address);
-          const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
+    const settledUSD = settled
+      .reduce((totalUSD, item) => {
+        const tokenDetails = tokensDetails.get(item.token_address);
+        const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
 
-          return totalUSD.add(
-            Decimal(item.amount.toString())
-              .div(tokenExponent.toString())
-              .mul(tokensExchangeRatesUSD.get(item.token_address)),
-          );
-        }, Decimal(0))
-        .toDecimalPlaces(2)
-        .toNumber();
-    };
-
-    const settledUSD = toUSD(settled);
-    const lockedUSD = locked !== null ? toUSD(locked) : null;
-    const medianOnboardingEpochs = statistics.median_onboarding_epochs;
+        return totalUSD.add(
+          Decimal(item.amount.toString())
+            .div(tokenExponent.toString())
+            .mul(tokensExchangeRatesUSD.get(item.token_address)),
+        );
+      }, Decimal(0))
+      .toDecimalPlaces(2)
+      .toNumber();
 
     return new PoRepOverviewStatistics({
       periodStart: periodStart !== null ? periodStart.toJSDate() : null,
@@ -1065,23 +1020,7 @@ export class PoRepService {
       activeProvidersCount: stringToNumber(
         statistics.active_providers_count.toString(),
       ),
-      activeContractsCount: stringToNumber(
-        statistics.active_contracts_count.toString(),
-      ),
-      dataRetainedBytes: BigInt(statistics.data_retained_bytes.toString()),
-      storagePurchasedBytes: BigInt(
-        statistics.storage_purchased_bytes.toString(),
-      ),
-      medianTimeToOnboardingSeconds:
-        medianOnboardingEpochs !== null
-          ? Math.round(this.safeNumericToNumber(medianOnboardingEpochs) * 30)
-          : null,
       settledUSD: settledUSD,
-      lockedUSD: lockedUSD,
-      spendUSD:
-        lockedUSD !== null
-          ? Decimal(settledUSD).add(lockedUSD).toDecimalPlaces(2).toNumber()
-          : null,
     });
   }
 

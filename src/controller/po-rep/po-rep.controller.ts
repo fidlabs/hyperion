@@ -151,7 +151,7 @@ export class PoRepController extends ControllerBase {
   @UseInterceptors(ClassSerializerInterceptor)
   @ApiOperation({
     summary:
-      'Get Peer-to-Pool overview statistics for a period, with values of the previous period for comparison',
+      'Get PoRep market overview statistics for a period, with values of the previous period for comparison',
   })
   @ApiOkResponse({
     type: PoRepOverview,
