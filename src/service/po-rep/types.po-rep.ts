@@ -1150,3 +1150,186 @@ export class PoRepProvidersList {
   })
   pagination: PaginationMetadata;
 }
+
+// Overview
+export const poRepOverviewPeriods = ['30d', '90d', '1y', 'all'] as const;
+export const poRepProducts = ['FCSS'] as const;
+
+export type PoRepOverviewPeriod = (typeof poRepOverviewPeriods)[number];
+export type PoRepProduct = (typeof poRepProducts)[number];
+
+export class PoRepOverviewParameters {
+  @ApiPropertyOptional({
+    description: `Period of the overview, "30d" by default. Values of the
+      previous period of the same length are returned for comparison, except
+      for "all".`,
+    enum: poRepOverviewPeriods,
+    enumName: 'PoRepOverviewPeriod',
+    required: false,
+    default: '30d',
+  })
+  @IsOptional()
+  @IsIn(poRepOverviewPeriods)
+  period?: PoRepOverviewPeriod;
+
+  @ApiPropertyOptional({
+    description: 'Product filter, "FCSS" by default and the only value today',
+    enum: poRepProducts,
+    enumName: 'PoRepProduct',
+    required: false,
+    default: 'FCSS',
+  })
+  @IsOptional()
+  @IsIn(poRepProducts)
+  product?: PoRepProduct;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional storage class filter, by deal type. No filter by default.',
+    enum: PoRepDealType,
+    enumName: 'PoRepDealType',
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(PoRepDealType)
+  dealType?: PoRepDealType;
+}
+
+export class PoRepOverviewStatistics {
+  @ApiProperty({
+    description: 'ISO Datetime of the period start, null for "all" period',
+    nullable: true,
+  })
+  @Transform(({ value }) => {
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+
+    return null;
+  })
+  periodStart: Date | null;
+
+  @ApiProperty({
+    description: 'ISO Datetime of the period end',
+  })
+  @Transform(({ value }) => (value as Date).toISOString())
+  periodEnd: Date;
+
+  @ApiProperty({
+    description: 'Count of clients with at least one deal up to period end',
+  })
+  clientsCount: number;
+
+  @ApiProperty({
+    description:
+      'Count of clients with at least one active contract at period end',
+  })
+  activeClientsCount: number;
+
+  @ApiProperty({
+    description:
+      'Count of providers registered in SP Registry up to period end, not affected by deal type filter',
+  })
+  providersCount: number;
+
+  @ApiProperty({
+    description:
+      'Count of providers with at least one active contract at period end',
+  })
+  activeProvidersCount: number;
+
+  @ApiProperty({
+    description: `Count of active contracts at period end. Contract is active
+      when deal reached ${PoRepDealState.ACTIVE} state and did not reach
+      ${PoRepDealState.FINALIZED}, ${PoRepDealState.EXPIRED} or
+      ${PoRepDealState.EARLY_TERMINATED} state.`,
+  })
+  activeContractsCount: number;
+
+  @ApiProperty({
+    description: 'Total size in bytes of active contracts at period end',
+    type: 'string',
+  })
+  dataRetainedBytes: bigint;
+
+  @ApiProperty({
+    description: `Total size in bytes of deals that reached
+      ${PoRepDealState.ACTIVE} state in the period`,
+    type: 'string',
+  })
+  storagePurchasedBytes: bigint;
+
+  @ApiProperty({
+    description: `Median time in seconds between deal proposal and deal reaching
+      ${PoRepDealState.ACTIVE} state, for deals that reached it in the period.
+      Null if no deal got active in the period.`,
+    nullable: true,
+  })
+  medianTimeToOnboardingSeconds: number | null;
+
+  @ApiProperty({
+    description: `Total amount settled on PoRep market rails in the period, in
+      USD. Includes network fees and operator commission.`,
+  })
+  settledUSD: number;
+
+  @ApiProperty({
+    description: `Amount currently locked on PoRep market rails, in USD. Null
+      for the previous period, as historical lockups are not tracked.`,
+    nullable: true,
+  })
+  lockedUSD: number | null;
+
+  @ApiProperty({
+    description: `Total spend, settled in the period plus currently locked
+      amount, in USD. Null for the previous period.`,
+    nullable: true,
+  })
+  spendUSD: number | null;
+
+  constructor(statistics: PoRepOverviewStatistics) {
+    Object.assign(this, statistics);
+  }
+}
+
+export class PoRepOverview {
+  @ApiProperty({
+    description: 'Period of the overview',
+    enum: poRepOverviewPeriods,
+    enumName: 'PoRepOverviewPeriod',
+  })
+  period: PoRepOverviewPeriod;
+
+  @ApiProperty({
+    description: 'Product of the overview',
+    enum: poRepProducts,
+    enumName: 'PoRepProduct',
+  })
+  product: PoRepProduct;
+
+  @ApiProperty({
+    description: 'Deal type filter, null if not filtered',
+    enum: PoRepDealType,
+    enumName: 'PoRepDealType',
+    nullable: true,
+  })
+  dealType: PoRepDealType | null;
+
+  @ApiProperty({
+    description: 'Statistics for the requested period',
+    type: PoRepOverviewStatistics,
+  })
+  current: PoRepOverviewStatistics;
+
+  @ApiProperty({
+    description:
+      'Statistics for the previous period of the same length, null for "all" period',
+    type: PoRepOverviewStatistics,
+    nullable: true,
+  })
+  previous: PoRepOverviewStatistics | null;
+
+  constructor(overview: PoRepOverview) {
+    Object.assign(this, overview);
+  }
+}

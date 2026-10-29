@@ -29,6 +29,8 @@ import {
   PoRepDealsValueHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
+  PoRepOverview,
+  PoRepOverviewParameters,
   PoRepProvider,
   PoRepProviderParameters,
   PoRepProvidersList,
@@ -143,6 +145,24 @@ export class PoRepController extends ControllerBase {
     }
 
     return client;
+  }
+
+  @Get('/overview')
+  @UseInterceptors(ClassSerializerInterceptor)
+  @ApiOperation({
+    summary:
+      'Get Peer-to-Pool overview statistics for a period, with values of the previous period for comparison',
+  })
+  @ApiOkResponse({
+    type: PoRepOverview,
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  public getOverview(
+    @Query(new ValidationPipe()) query: PoRepOverviewParameters,
+  ): Promise<PoRepOverview> {
+    return this.poRepService.getOverview(query);
   }
 
   @Get('/providers')
