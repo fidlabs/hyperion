@@ -120,8 +120,7 @@ export class PoRepController extends ControllerBase {
     description: 'Query parameters validation error',
   })
   public getClients(
-    @Query(new ValidationPipe({ transform: true }))
-    query: PoRepClientsListParameters,
+    @Query() query: PoRepClientsListParameters,
   ): Promise<PoRepClientsList> {
     return this.poRepService.getClients(query);
   }
@@ -141,7 +140,7 @@ export class PoRepController extends ControllerBase {
     description: 'Client has no PoRep market deals',
   })
   public async getClient(
-    @Param(new ValidationPipe()) { clientAddress }: PoRepClientParameters,
+    @Param() { clientAddress }: PoRepClientParameters,
   ): Promise<PoRepClient> {
     const client = await this.poRepService.getClient(clientAddress);
 
@@ -167,7 +166,7 @@ export class PoRepController extends ControllerBase {
     description: 'Query parameters validation error',
   })
   public getOverview(
-    @Query(new ValidationPipe()) query: PoRepOverviewParameters,
+    @Query() query: PoRepOverviewParameters,
   ): Promise<PoRepOverview> {
     return this.poRepService.getOverview(query);
   }
@@ -181,7 +180,7 @@ export class PoRepController extends ControllerBase {
     type: GetPoRepProvidersResponse,
   })
   public async getParticipants(
-    @Query(new ValidationPipe()) query: PoRepProvidersListParameters,
+    @Query() query: PoRepProvidersListParameters,
   ): Promise<GetPoRepProvidersResponse> {
     const { filter } = query;
     const paginationInfo = this.validatePaginationInfo(query);
@@ -271,8 +270,7 @@ export class PoRepController extends ControllerBase {
     description: 'Error response when provider with given id does not exist.',
   })
   public async getProviderStorageStatistics(
-    @Param(new ValidationPipe())
-    parameters: PoRepProviderResourceParameters,
+    @Param() parameters: PoRepProviderResourceParameters,
   ): Promise<PoRepProviderStorageStatistics> {
     const stats = await this.poRepService.getProviderStorageStatistics(
       parameters.providerId,
@@ -302,8 +300,7 @@ export class PoRepController extends ControllerBase {
     description: 'Error response when provider with given id does not exist.',
   })
   public getProviderEconomicsStatistics(
-    @Param(new ValidationPipe())
-    parameters: PoRepProviderResourceParameters,
+    @Param() parameters: PoRepProviderResourceParameters,
   ): Promise<PoRepProviderEconomicsStatistics> {
     return this.poRepService.getProviderEconomicsStatistics(
       parameters.providerId,
