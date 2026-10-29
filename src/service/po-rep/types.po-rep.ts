@@ -3,6 +3,7 @@ import { Transform, TransformFnParams } from 'class-transformer';
 import {
   IsBooleanString,
   IsEnum,
+  IsEthereumAddress,
   IsIn,
   IsInt,
   IsOptional,
@@ -115,6 +116,16 @@ export class PoRepDealsListParameters extends PaginationParameters {
   @IsOptional()
   @IsF0IdInput()
   providerId?: F0IdInput;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional filter by client (payer wallet) EVM address, case insensitive',
+    type: 'string',
+    required: false,
+  })
+  @IsOptional()
+  @IsEthereumAddress()
+  clientAddress?: string;
 
   @ApiPropertyOptional({
     description:
@@ -506,6 +517,23 @@ export class PoRepProviderStorageStatistics {
   onboardedDealsCount: number;
 
   @ApiProperty({
+    description: `Number of failed deals, eg. deals in
+      "${PoRepDealState.EARLY_TERMINATED}" state, including deals terminated
+      for missed proofs.`,
+  })
+  failedDealsCount: number;
+
+  @ApiProperty({
+    description: `Number of deals in "${PoRepDealState.REJECTED}" state.`,
+  })
+  rejectedDealsCount: number;
+
+  @ApiProperty({
+    description: `Number of deals in "${PoRepDealState.EXPIRED}" state.`,
+  })
+  expiredDealsCount: number;
+
+  @ApiProperty({
     description: `Total space available in bytes, declared by storage provider.`,
   })
   totalAvailableBytes: bigint;
@@ -525,6 +553,18 @@ export class PoRepProviderStorageStatistics {
       "${PoRepDealState.ACTIVE}") state and with active payment rail)`,
   })
   onboardedBytes: bigint;
+
+  @ApiProperty({
+    description: `Space in bytes in active deals of
+      "${PoRepDealType.PUBLIC}" type.`,
+  })
+  onboardedPublicBytes: bigint;
+
+  @ApiProperty({
+    description: `Space in bytes in active deals of
+      "${PoRepDealType.PRIVATE}" type.`,
+  })
+  onboardedPrivateBytes: bigint;
 }
 
 export class PoRepProviderEconomicsStatistics {
@@ -550,9 +590,36 @@ export class PoRepProviderEconomicsStatistics {
   predictedRevenueUSD: number;
 
   @ApiProperty({
-    description: 'Total net amount settled for all deals in USD',
+    description: `Total amount settled for all deals in USD. Includes network
+      fees and operator commission.`,
   })
   totalSettledUSD: number;
+
+  @ApiProperty({
+    description: `Total net amount settled to provider for all deals in USD,
+      eg. revenue to date.`,
+  })
+  totalNetSettledUSD: number;
+
+  @ApiProperty({
+    description: 'Net amount settled to provider in the last 90 days, in USD',
+  })
+  last90DaysNetSettledUSD: number;
+
+  @ApiProperty({
+    description:
+      'Net amount settled to provider in the 90 days before the last 90 days, in USD',
+  })
+  previous90DaysNetSettledUSD: number;
+
+  @ApiProperty({
+    description: `90-day revenue growth, eg. relative change of net amount
+      settled in the last 90 days against the 90 days before, represented as a
+      floating point number, eg. value of 0.1 means 10% growth. Null if nothing
+      was settled in the previous period.`,
+    nullable: true,
+  })
+  revenueGrowth90Days: number | null;
 
   @ApiProperty({
     description:
@@ -582,6 +649,16 @@ export class PoRepDealsPaymentsHistoryParameters extends PoRepHistoryParameters 
   @IsF0IdInput()
   @IsOptional()
   providerId?: F0IdInput;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional filter by client (payer wallet) EVM address, case insensitive',
+    type: 'string',
+    required: false,
+  })
+  @IsOptional()
+  @IsEthereumAddress()
+  clientAddress?: string;
 }
 
 export class PoRepDealsValueHistoryParameters extends PoRepHistoryParameters {
@@ -593,4 +670,326 @@ export class PoRepDealsValueHistoryParameters extends PoRepHistoryParameters {
   @IsF0IdInput()
   @IsOptional()
   providerId?: F0IdInput;
+}
+
+// Clients
+const clientsAvailableSortingKeys = [
+  'spendUSD',
+  'settledUSD',
+  'lockedUSD',
+  'storagePurchasedBytes',
+  'activeContractsCount',
+  'dealsCount',
+  'renewalsCount',
+  'firstDealAt',
+  'lastDealAt',
+] as const;
+
+export type PoRepClientsSortingKey =
+  (typeof clientsAvailableSortingKeys)[number];
+
+export class PoRepClientsListParameters extends PaginationParameters {
+  @ApiPropertyOptional({
+    description: `Set to true to show active clients only. Client is
+      considered active when it has at least one active contract (deal in
+      ${PoRepDealState.ACTIVE} state with payment rail in
+      ${DealRailState.ACTIVE} or ${DealRailState.TERMINATED} state).`,
+    required: false,
+  })
+  @IsOptional()
+  @IsBooleanString()
+  activeOnly?: 'true' | 'false';
+
+  @ApiPropertyOptional({
+    description:
+      'Optional sorting key, if not provided clients will be sorted by spend descending',
+    enumName: 'ClientsListSortingKey',
+    enum: clientsAvailableSortingKeys,
+    required: false,
+    default: 'spendUSD',
+  })
+  @IsOptional()
+  @IsIn(clientsAvailableSortingKeys)
+  sort?: PoRepClientsSortingKey;
+
+  @ApiPropertyOptional({
+    description: 'Optional sorting direction, "desc" by default',
+    enumName: 'ClientsListSortingDirection',
+    enum: ['asc', 'desc'],
+    required: false,
+    default: 'desc',
+  })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  order?: 'asc' | 'desc';
+}
+
+export class PoRepClientParameters {
+  @ApiProperty({
+    description: 'Client (payer wallet) EVM address, case insensitive',
+    type: 'string',
+  })
+  @IsEthereumAddress()
+  clientAddress: string;
+}
+
+export class PoRepClientTokenSpend {
+  @ApiProperty({
+    description: 'Address of ERC20 token used for payment rails',
+  })
+  tokenAddress: string;
+
+  @ApiProperty({
+    description: 'Symbol of ERC20 token used for payment rails',
+  })
+  tokenSymbol: string;
+
+  @ApiProperty({
+    description: 'Number of decimal places of ERC20 token',
+  })
+  tokenDecimals: number;
+
+  @ApiProperty({
+    description: `Total amount settled on client's PoRep market rails in that
+      token, in Wei (smallest non-dividable unit of the token). Includes
+      network fees and operator commission.`,
+    type: 'string',
+  })
+  settledWei: bigint;
+
+  @ApiProperty({
+    description: `Amount currently locked on client's PoRep market rails in
+      that token, in Wei (smallest non-dividable unit of the token).`,
+    type: 'string',
+  })
+  lockedWei: bigint;
+
+  @ApiProperty({
+    description: 'Settled plus locked amount, in Wei',
+    type: 'string',
+  })
+  spendWei: bigint;
+
+  constructor(tokenSpend: PoRepClientTokenSpend) {
+    Object.assign(this, tokenSpend);
+  }
+}
+
+export class PoRepClientDealsCountByState {
+  @ApiProperty({
+    description: 'Deal state',
+    enum: PoRepDealState,
+    enumName: 'PoRepDealState',
+  })
+  state: PoRepDealState;
+
+  @ApiProperty({
+    description: 'Number of client deals in that state',
+  })
+  dealsCount: number;
+}
+
+export class PoRepClient {
+  @ApiProperty({
+    description: `EVM address of the client. Client is a single payer wallet,
+      in PoRep market payment rails are always created with deal client as
+      the payer.`,
+  })
+  clientAddress: string;
+
+  @ApiProperty({
+    description: `Flag telling if client has at least one active contract,
+      eg. at least one streaming payment rail.`,
+  })
+  active: boolean;
+
+  @ApiProperty({
+    description: 'Total count of deals made by the client, in any state',
+  })
+  dealsCount: number;
+
+  @ApiProperty({
+    description: 'Count of client deals in each deal state',
+    type: [PoRepClientDealsCountByState],
+  })
+  dealsCountByState: PoRepClientDealsCountByState[];
+
+  @ApiProperty({
+    description: `Count of active contracts, eg. deals in
+      ${PoRepDealState.ACTIVE} state with payment rail in
+      ${DealRailState.ACTIVE} or ${DealRailState.TERMINATED} state.`,
+  })
+  activeContractsCount: number;
+
+  @ApiProperty({
+    description: `Count of renewed deals. Deal is a renewal when the same
+      client made an earlier deal for the same manifest hash, that was already
+      ${PoRepDealState.ACTIVE} when the renewal got proposed. Rejected deals
+      are not counted.`,
+  })
+  renewalsCount: number;
+
+  @ApiProperty({
+    description: `Total size in bytes of client deals, for which data was
+      onboarded and payment rail got activated.`,
+    type: 'string',
+  })
+  storagePurchasedBytes: bigint;
+
+  @ApiProperty({
+    description: `Total amount settled on client's PoRep market rails, in USD.
+      Includes network fees and operator commission.`,
+  })
+  settledUSD: number;
+
+  @ApiProperty({
+    description: `Amount currently locked on client's PoRep market rails, in
+      USD.`,
+  })
+  lockedUSD: number;
+
+  @ApiProperty({
+    description: 'Spend to date, settled plus locked amount, in USD',
+  })
+  spendUSD: number;
+
+  @ApiProperty({
+    description: 'Settled and locked amounts per payment token',
+    type: [PoRepClientTokenSpend],
+  })
+  tokens: PoRepClientTokenSpend[];
+
+  @ApiProperty({
+    description: `ISO Datetime of the first deal proposal made by client`,
+  })
+  @Transform(({ value }) => (value as Date).toISOString())
+  firstDealAt: Date;
+
+  @ApiProperty({
+    description: `ISO Datetime of the latest deal proposal made by client`,
+  })
+  @Transform(({ value }) => (value as Date).toISOString())
+  lastDealAt: Date;
+
+  constructor(client: PoRepClient) {
+    Object.assign(this, client);
+  }
+}
+
+export class PoRepClientsList {
+  @ApiProperty({
+    description:
+      'Paginated and sorted list of clients matching provided parameters.',
+    type: [PoRepClient],
+  })
+  data: PoRepClient[];
+
+  @ApiProperty({
+    description: 'Pagination metadata',
+    type: PaginationMetadata,
+  })
+  pagination: PaginationMetadata;
+}
+
+// Overview
+export const poRepOverviewPeriods = ['30d', '90d', '1y', 'all'] as const;
+
+export type PoRepOverviewPeriod = (typeof poRepOverviewPeriods)[number];
+
+export class PoRepOverviewParameters {
+  @ApiPropertyOptional({
+    description: `Period of the overview, "30d" by default. Values of the
+      previous period of the same length are returned for comparison, except
+      for "all".`,
+    enum: poRepOverviewPeriods,
+    enumName: 'PoRepOverviewPeriod',
+    required: false,
+    default: '30d',
+  })
+  @IsOptional()
+  @IsIn(poRepOverviewPeriods)
+  period?: PoRepOverviewPeriod;
+}
+
+export class PoRepOverviewStatistics {
+  @ApiProperty({
+    description: 'ISO Datetime of the period start, null for "all" period',
+    nullable: true,
+  })
+  @Transform(({ value }) => {
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+
+    return null;
+  })
+  periodStart: Date | null;
+
+  @ApiProperty({
+    description: 'ISO Datetime of the period end',
+  })
+  @Transform(({ value }) => (value as Date).toISOString())
+  periodEnd: Date;
+
+  @ApiProperty({
+    description: 'Count of clients with at least one deal up to period end',
+  })
+  clientsCount: number;
+
+  @ApiProperty({
+    description: `Count of clients with at least one active deal at period end.
+      Deal is active when it reached ${PoRepDealState.ACTIVE} state and did
+      not reach ${PoRepDealState.FINALIZED}, ${PoRepDealState.EXPIRED} or
+      ${PoRepDealState.EARLY_TERMINATED} state.`,
+  })
+  activeClientsCount: number;
+
+  @ApiProperty({
+    description:
+      'Count of providers registered in SP Registry up to period end',
+  })
+  providersCount: number;
+
+  @ApiProperty({
+    description:
+      'Count of providers with at least one active deal at period end',
+  })
+  activeProvidersCount: number;
+
+  @ApiProperty({
+    description: `Total amount settled on PoRep market rails in the period, in
+      USD. Includes network fees and operator commission.`,
+  })
+  settledUSD: number;
+
+  constructor(statistics: PoRepOverviewStatistics) {
+    Object.assign(this, statistics);
+  }
+}
+
+export class PoRepOverview {
+  @ApiProperty({
+    description: 'Period of the overview',
+    enum: poRepOverviewPeriods,
+    enumName: 'PoRepOverviewPeriod',
+  })
+  period: PoRepOverviewPeriod;
+
+  @ApiProperty({
+    description: 'Statistics for the requested period',
+    type: PoRepOverviewStatistics,
+  })
+  current: PoRepOverviewStatistics;
+
+  @ApiProperty({
+    description:
+      'Statistics for the previous period of the same length, null for "all" period',
+    type: PoRepOverviewStatistics,
+    nullable: true,
+  })
+  previous: PoRepOverviewStatistics | null;
+
+  constructor(overview: PoRepOverview) {
+    Object.assign(this, overview);
+  }
 }

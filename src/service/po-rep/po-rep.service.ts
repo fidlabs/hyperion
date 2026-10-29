@@ -1,14 +1,24 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { groupBy, uniq } from 'lodash';
-import { DateTime } from 'luxon';
+import { groupBy, orderBy, uniq } from 'lodash';
+import { DateTime, DurationLike } from 'luxon';
 import { Prisma as PrismaRuntime } from '../../generated/prisma/client';
 import { InjectQueryBuilder, QueryBuilder } from 'src/db';
 import { PrismaService } from 'src/db/prisma.service';
+import {
+  createPoRepClientsDealsStatesQuery,
+  createPoRepClientsSpendQuery,
+  createPoRepClientsStatisticsQuery,
+} from 'src/db/queries/po-rep-clients.query';
 import { createPoRepDealsPaymentsHistoryQuery } from 'src/db/queries/po-rep-deals-payments-history.query';
 import { createPoRepDealsValueHistoryQuery } from 'src/db/queries/po-rep-deals-value-history.query';
 import { createPoRepDealsQuery } from 'src/db/queries/po-rep-deals.query';
 import { createPoRepOnboardedDataHistoryQuery } from 'src/db/queries/po-rep-onboarded-data-history.query';
+import {
+  createPoRepOverviewSettledQuery,
+  createPoRepOverviewStatisticsQuery,
+} from 'src/db/queries/po-rep-overview.query';
 import { createPoRepProviderEconomicsStatisticsQuery } from 'src/db/queries/po-rep-provider-economics-statistics.query';
+import { createPoRepProviderRevenueQuery } from 'src/db/queries/po-rep-provider-revenue.query';
 import { createPoRepProviderStorageStatisticsQuery } from 'src/db/queries/po-rep-provider-storage-statistics.query';
 import { PoRepPublicClient, RECENT_NODE_CLIENT } from 'src/po-rep-indexer';
 import {
@@ -20,10 +30,15 @@ import {
   stringToNumber,
 } from 'src/utils/utils';
 import { F0IdInput } from 'src/utils/validators';
+import { getAddress } from 'viem';
 import { filecoinCalibration } from 'viem/chains';
 import { PoRepPriceOracleService } from '../po-rep-price-oracle/po-rep-price-oracle.service';
 import {
   DealRailState,
+  PoRepClient,
+  PoRepClientsList,
+  PoRepClientsListParameters,
+  PoRepClientTokenSpend,
   PoRepDeal,
   PoRepDealsList,
   PoRepDealsListParameters,
@@ -33,6 +48,10 @@ import {
   PoRepDealsValueHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
+  PoRepOverview,
+  PoRepOverviewParameters,
+  PoRepOverviewPeriod,
+  PoRepOverviewStatistics,
   PoRepProviderEconomicsStatistics,
   PoRepProviderStorageStatistics,
 } from './types.po-rep';
@@ -45,6 +64,16 @@ interface TokenDetails {
 }
 
 const Decimal = PrismaRuntime.Decimal;
+
+const overviewPeriodDurations: Record<
+  PoRepOverviewPeriod,
+  DurationLike | null
+> = {
+  '30d': { days: 30 },
+  '90d': { days: 90 },
+  '1y': { years: 1 },
+  all: null,
+};
 
 @Injectable()
 export class PoRepService {
@@ -59,6 +88,7 @@ export class PoRepService {
 
   public async getDeals({
     providerId = null,
+    clientAddress = null,
     railState = null,
     pieceCid = null,
     activeOnly,
@@ -69,6 +99,8 @@ export class PoRepService {
   }: PoRepDealsListParameters): Promise<PoRepDealsList> {
     let baseQuery = createPoRepDealsQuery(this.queryBuilder, {
       providersIds: providerId,
+      clientsAddresses:
+        clientAddress !== null ? getAddress(clientAddress) : null,
       railStates: railState,
       activeOnly: Boolean(stringToBool(activeOnly)),
     });
@@ -213,28 +245,70 @@ export class PoRepService {
     return {
       totalDealsCount: stringToNumber(result.totalDealsCount.toString()),
       onboardedDealsCount: stringToNumber(result.onbardedDealsCount.toString()),
+      failedDealsCount: stringToNumber(result.failedDealsCount.toString()),
+      rejectedDealsCount: stringToNumber(result.rejectedDealsCount.toString()),
+      expiredDealsCount: stringToNumber(result.expiredDealsCount.toString()),
       totalAvailableBytes: BigInt(result.availableBytes),
       pendingBytes: BigInt(result.pendingBytes),
       committedBytes: BigInt(result.committedBytes),
       onboardedBytes: BigInt(result.onboardedBytes),
+      onboardedPublicBytes: BigInt(result.onboardedPublicBytes),
+      onboardedPrivateBytes: BigInt(result.onboardedPrivateBytes),
     };
   }
 
   public async getProviderEconomicsStatistics(
     providerId: F0Id | F0IdInput,
   ): Promise<PoRepProviderEconomicsStatistics> {
-    const perTokenResults = await createPoRepProviderEconomicsStatisticsQuery(
-      this.queryBuilder,
-      { providerId: providerId },
-    ).execute();
+    const now = DateTime.utc();
+    const [perTokenResults, revenueResults] = await Promise.all([
+      createPoRepProviderEconomicsStatisticsQuery(this.queryBuilder, {
+        providerId: providerId,
+      }).execute(),
+      createPoRepProviderRevenueQuery(this.queryBuilder, {
+        providerId: providerId,
+        currentPeriodStartEpoch: dateToFilecoinBlockHeight(
+          now.minus({ days: 90 }).toJSDate(),
+          { testnet: this.isTestnet() },
+        ),
+        previousPeriodStartEpoch: dateToFilecoinBlockHeight(
+          now.minus({ days: 180 }).toJSDate(),
+          { testnet: this.isTestnet() },
+        ),
+      }).execute(),
+    ]);
 
-    const uniqueTokens = uniq(
-      perTokenResults.map((i) => i.token_address).filter((i) => i !== null),
-    );
+    const uniqueTokens = uniq([
+      ...perTokenResults.map((i) => i.token_address).filter((i) => i !== null),
+      ...revenueResults.map((i) => i.token_address),
+    ]);
     const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
       this.getTokensDetails(uniqueTokens),
       this.getTokensExchangeRatesUSD(uniqueTokens),
     ]);
+
+    const sumNetSettledUSD = (
+      getAmount: (
+        result: (typeof revenueResults)[number],
+      ) => string | number | bigint,
+    ) => {
+      return revenueResults.reduce((totalUSD, result) => {
+        return totalUSD.add(
+          this.tokenAmountToUSD(
+            getAmount(result),
+            tokensDetails.get(result.token_address),
+            tokensExchangeRatesUSD.get(result.token_address),
+          ),
+        );
+      }, Decimal(0));
+    };
+
+    const last90DaysNetSettledUSD = sumNetSettledUSD(
+      (result) => result.current_period_net_amount_settled,
+    );
+    const previous90DaysNetSettledUSD = sumNetSettledUSD(
+      (result) => result.previous_period_net_amount_settled,
+    );
 
     return perTokenResults.reduce<PoRepProviderEconomicsStatistics>(
       (stats, result) => {
@@ -253,7 +327,6 @@ export class PoRepService {
         const exchangeRateUSD = tokensExchangeRatesUSD.get(
           result.token_address,
         );
-        const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
 
         const lastSettlementAt = (() => {
           const candidateLastSettlement = result.last_settlement_epoch
@@ -275,29 +348,36 @@ export class PoRepService {
         })();
 
         return {
+          ...stats,
           totalRailsCount: stats.totalRailsCount + resultRailsCount,
           activeRailsCount:
             stats.activeRailsCount +
             stringToNumber(result.active_rails_count.toString()),
           totalRevenueUSD:
             stats.totalRevenueUSD +
-            Decimal(result.total_revenue.toString())
-              .div(tokenExponent.toString())
-              .mul(exchangeRateUSD)
+            this.tokenAmountToUSD(
+              result.total_revenue,
+              tokenDetails,
+              exchangeRateUSD,
+            )
               .toDecimalPlaces(2)
               .toNumber(),
           predictedRevenueUSD:
             stats.predictedRevenueUSD +
-            Decimal(result.predicted_revenue.toString())
-              .div(tokenExponent.toString())
-              .mul(exchangeRateUSD)
+            this.tokenAmountToUSD(
+              result.predicted_revenue,
+              tokenDetails,
+              exchangeRateUSD,
+            )
               .toDecimalPlaces(2)
               .toNumber(),
           totalSettledUSD:
             stats.totalSettledUSD +
-            Decimal(result.total_amount_settled.toString())
-              .div(tokenExponent.toString())
-              .mul(exchangeRateUSD)
+            this.tokenAmountToUSD(
+              result.total_amount_settled,
+              tokenDetails,
+              exchangeRateUSD,
+            )
               .toDecimalPlaces(2)
               .toNumber(),
           lastSettlementAt: lastSettlementAt,
@@ -309,6 +389,24 @@ export class PoRepService {
         totalRevenueUSD: 0,
         predictedRevenueUSD: 0,
         totalSettledUSD: 0,
+        totalNetSettledUSD: sumNetSettledUSD(
+          (result) => result.total_net_amount_settled,
+        )
+          .toDecimalPlaces(2)
+          .toNumber(),
+        last90DaysNetSettledUSD: last90DaysNetSettledUSD
+          .toDecimalPlaces(2)
+          .toNumber(),
+        previous90DaysNetSettledUSD: previous90DaysNetSettledUSD
+          .toDecimalPlaces(2)
+          .toNumber(),
+        revenueGrowth90Days: previous90DaysNetSettledUSD.isZero()
+          ? null
+          : last90DaysNetSettledUSD
+              .sub(previous90DaysNetSettledUSD)
+              .div(previous90DaysNetSettledUSD)
+              .toDecimalPlaces(4)
+              .toNumber(),
         lastSettlementAt: null,
       },
     );
@@ -317,6 +415,7 @@ export class PoRepService {
   public async getDealsPaymentsSummaryHistory({
     netAmounts = 'true',
     providerId = null,
+    clientAddress = null,
     windowSize = 'day',
   }: PoRepDealsPaymentsHistoryParameters): Promise<
     PoRepDealsPaymentsHistoryEntry[]
@@ -325,12 +424,11 @@ export class PoRepService {
       orderBy: {
         proposedAtBlock: 'asc',
       },
-      where:
-        providerId !== null
-          ? {
-              providerId: F0Id.from(providerId).toBigInt(),
-            }
-          : undefined,
+      where: {
+        providerId:
+          providerId !== null ? F0Id.from(providerId).toBigInt() : undefined,
+        client: clientAddress !== null ? getAddress(clientAddress) : undefined,
+      },
     });
 
     if (!earliestDeal) {
@@ -354,6 +452,8 @@ export class PoRepService {
       }),
       netAmount: stringToBool(netAmounts),
       providersIds: providerId,
+      clientsAddresses:
+        clientAddress !== null ? getAddress(clientAddress) : null,
       windowSize: windowSize,
     }).execute();
 
@@ -389,12 +489,13 @@ export class PoRepService {
             );
           }
 
-          const tokenExponent = Math.pow(10, tokenInfo.tokenDecimals);
-          const tokenWindowTotalUSD = Decimal(result.window_total.toString())
-            .div(tokenExponent)
-            .mul(tokenUSDExchangeRate);
-
-          return currentWindowVolumeUSD.add(tokenWindowTotalUSD);
+          return currentWindowVolumeUSD.add(
+            this.tokenAmountToUSD(
+              result.window_total,
+              tokenInfo,
+              tokenUSDExchangeRate,
+            ),
+          );
         },
         Decimal(0),
       );
@@ -415,6 +516,69 @@ export class PoRepService {
 
       return [...result, nextEntry];
     }, []);
+  }
+
+  public async getClients({
+    activeOnly,
+    sort = 'spendUSD',
+    order = 'desc',
+    limit = 0,
+    page = 1,
+  }: PoRepClientsListParameters): Promise<PoRepClientsList> {
+    const clients = await this.getClientsAggregates();
+    const filteredClients = stringToBool(activeOnly)
+      ? clients.filter((client) => client.active)
+      : clients;
+    const sortedClients = orderBy(
+      filteredClients,
+      [(client) => client[sort], (client) => client.clientAddress],
+      [order, 'asc'],
+    );
+
+    const totalCount = sortedClients.length;
+    const pagesCount = limit ? Math.ceil(totalCount / limit) : 1;
+
+    return {
+      data: limit
+        ? sortedClients.slice((page - 1) * limit, page * limit)
+        : sortedClients,
+      pagination: {
+        page: page,
+        pagesCount: pagesCount,
+        totalCount: totalCount,
+      },
+    };
+  }
+
+  public async getClient(clientAddress: string): Promise<PoRepClient | null> {
+    const [client] = await this.getClientsAggregates(getAddress(clientAddress));
+    return client ?? null;
+  }
+
+  public async getOverview({
+    period = '30d',
+  }: PoRepOverviewParameters): Promise<PoRepOverview> {
+    const periodEnd = DateTime.utc();
+    const periodDuration = overviewPeriodDurations[period];
+    const periodStart =
+      periodDuration !== null ? periodEnd.minus(periodDuration) : null;
+    const previousPeriodStart =
+      periodStart !== null && periodDuration !== null
+        ? periodStart.minus(periodDuration)
+        : null;
+
+    const [current, previous] = await Promise.all([
+      this.getOverviewStatistics(periodStart, periodEnd),
+      periodStart !== null
+        ? this.getOverviewStatistics(previousPeriodStart, periodStart)
+        : null,
+    ]);
+
+    return new PoRepOverview({
+      period: period,
+      current: current,
+      previous: previous,
+    });
   }
 
   public async getDealsDoneCountUpToDate(upToDate?: Date): Promise<number> {
@@ -513,12 +677,13 @@ export class PoRepService {
               );
             }
 
-            const tokenExponent = Math.pow(10, tokenInfo.tokenDecimals);
-            const tokenWindowTotalUSD = Decimal(result.window_total.toString())
-              .div(tokenExponent)
-              .mul(tokenUSDExchangeRate);
-
-            return currentWindowVolumeUSD.add(tokenWindowTotalUSD);
+            return currentWindowVolumeUSD.add(
+              this.tokenAmountToUSD(
+                result.window_total,
+                tokenInfo,
+                tokenUSDExchangeRate,
+              ),
+            );
           },
           Decimal(0),
         );
@@ -541,6 +706,159 @@ export class PoRepService {
       },
       [],
     );
+  }
+
+  private async getClientsAggregates(
+    clientAddress: string | null = null,
+  ): Promise<PoRepClient[]> {
+    const [statistics, dealsStates, spend] = await Promise.all([
+      createPoRepClientsStatisticsQuery(this.queryBuilder, {
+        clientsAddresses: clientAddress,
+      }).execute(),
+      createPoRepClientsDealsStatesQuery(this.queryBuilder, {
+        clientsAddresses: clientAddress,
+      }).execute(),
+      createPoRepClientsSpendQuery(this.queryBuilder, {
+        clientsAddresses: clientAddress,
+      }).execute(),
+    ]);
+
+    const uniqueTokens = uniq(
+      spend.map((item) => item.token_address).filter((item) => item !== null),
+    );
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    const dealsStatesByClient = groupBy(dealsStates, 'client_address');
+    const spendByClient = groupBy(spend, 'client_address');
+
+    return statistics.map((result) => {
+      const tokens = (spendByClient[result.client_address] ?? []).map(
+        (item) => {
+          const tokenDetails = tokensDetails.get(item.token_address);
+          const settledWei = BigInt(item.total_amount_settled.toString());
+          const lockedWei = BigInt(item.total_amount_locked.toString());
+
+          return new PoRepClientTokenSpend({
+            tokenAddress: item.token_address,
+            tokenSymbol: tokenDetails.tokenSymbol,
+            tokenDecimals: tokenDetails.tokenDecimals,
+            settledWei: settledWei,
+            lockedWei: lockedWei,
+            spendWei: settledWei + lockedWei,
+          });
+        },
+      );
+
+      const toUSD = (getAmount: (token: PoRepClientTokenSpend) => bigint) => {
+        return tokens
+          .reduce((totalUSD, token) => {
+            return totalUSD.add(
+              this.tokenAmountToUSD(
+                getAmount(token),
+                token,
+                tokensExchangeRatesUSD.get(token.tokenAddress),
+              ),
+            );
+          }, Decimal(0))
+          .toDecimalPlaces(2)
+          .toNumber();
+      };
+
+      const activeContractsCount = stringToNumber(
+        result.active_contracts_count.toString(),
+      );
+
+      return new PoRepClient({
+        clientAddress: result.client_address,
+        active: activeContractsCount > 0,
+        dealsCount: stringToNumber(result.deals_count.toString()),
+        dealsCountByState: (
+          dealsStatesByClient[result.client_address] ?? []
+        ).map((item) => ({
+          state: item.deal_state,
+          dealsCount: stringToNumber(item.deals_count.toString()),
+        })),
+        activeContractsCount: activeContractsCount,
+        renewalsCount: stringToNumber(result.renewals_count.toString()),
+        storagePurchasedBytes: BigInt(
+          result.storage_purchased_bytes.toString(),
+        ),
+        settledUSD: toUSD((token) => token.settledWei),
+        lockedUSD: toUSD((token) => token.lockedWei),
+        spendUSD: toUSD((token) => token.spendWei),
+        tokens: tokens,
+        firstDealAt: this.epochToDate(BigInt(result.first_deal_epoch)),
+        lastDealAt: this.epochToDate(BigInt(result.last_deal_epoch)),
+      });
+    });
+  }
+
+  private async getOverviewStatistics(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<PoRepOverviewStatistics> {
+    const periodStartEpoch =
+      periodStart !== null
+        ? dateToFilecoinBlockHeight(periodStart.toJSDate(), {
+            testnet: this.isTestnet(),
+          })
+        : null;
+    const periodEndEpoch = dateToFilecoinBlockHeight(periodEnd.toJSDate(), {
+      testnet: this.isTestnet(),
+    });
+
+    const [statistics, providersCount, settled] = await Promise.all([
+      createPoRepOverviewStatisticsQuery(this.queryBuilder, {
+        periodEndEpoch: periodEndEpoch,
+      }).executeTakeFirstOrThrow(),
+      this.prismaService.po_rep_storage_provider.count({
+        where: {
+          registeredAtBlock: {
+            lte: periodEndEpoch,
+          },
+        },
+      }),
+      createPoRepOverviewSettledQuery(this.queryBuilder, {
+        periodStartEpoch: periodStartEpoch,
+        periodEndEpoch: periodEndEpoch,
+      }).execute(),
+    ]);
+
+    const uniqueTokens = uniq(settled.map((item) => item.token_address));
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    const settledUSD = settled
+      .reduce((totalUSD, item) => {
+        return totalUSD.add(
+          this.tokenAmountToUSD(
+            item.amount,
+            tokensDetails.get(item.token_address),
+            tokensExchangeRatesUSD.get(item.token_address),
+          ),
+        );
+      }, Decimal(0))
+      .toDecimalPlaces(2)
+      .toNumber();
+
+    return new PoRepOverviewStatistics({
+      periodStart: periodStart !== null ? periodStart.toJSDate() : null,
+      periodEnd: periodEnd.toJSDate(),
+      clientsCount: stringToNumber(statistics.clients_count.toString()),
+      activeClientsCount: stringToNumber(
+        statistics.active_clients_count.toString(),
+      ),
+      providersCount: providersCount,
+      activeProvidersCount: stringToNumber(
+        statistics.active_providers_count.toString(),
+      ),
+      settledUSD: settledUSD,
+    });
   }
 
   private isTestnet(): boolean {
@@ -592,6 +910,16 @@ export class PoRepService {
 
     const tokenDetailsResponses = await Promise.all(tokenDetailsRequests);
     return new Map(tokenDetailsResponses);
+  }
+
+  private tokenAmountToUSD(
+    amount: string | number | bigint,
+    { tokenDecimals }: Pick<TokenDetails, 'tokenDecimals'>,
+    exchangeRateUSD: number,
+  ) {
+    return Decimal(amount.toString())
+      .div((10n ** BigInt(tokenDecimals)).toString())
+      .mul(exchangeRateUSD);
   }
 
   private async getTokensExchangeRatesUSD<T extends string>(
