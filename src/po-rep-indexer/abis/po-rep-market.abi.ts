@@ -8,19 +8,6 @@ const PoRepMarketABI = [
   },
   {
     type: 'function',
-    name: 'DEFAULT_ADMIN_ROLE',
-    inputs: [],
-    outputs: [
-      {
-        name: '',
-        type: 'bytes32',
-        internalType: 'bytes32',
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     name: 'EPOCHS_IN_MONTH',
     inputs: [],
     outputs: [
@@ -60,19 +47,6 @@ const PoRepMarketABI = [
   },
   {
     type: 'function',
-    name: 'POREP_SERVICE_ROLE',
-    inputs: [],
-    outputs: [
-      {
-        name: '',
-        type: 'bytes32',
-        internalType: 'bytes32',
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     name: 'SECTOR_SIZE',
     inputs: [],
     outputs: [
@@ -80,19 +54,6 @@ const PoRepMarketABI = [
         name: '',
         type: 'uint256',
         internalType: 'uint256',
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'UPGRADER_ROLE',
-    inputs: [],
-    outputs: [
-      {
-        name: '',
-        type: 'bytes32',
-        internalType: 'bytes32',
       },
     ],
     stateMutability: 'view',
@@ -112,16 +73,16 @@ const PoRepMarketABI = [
   },
   {
     type: 'function',
-    name: 'acceptDeal',
-    inputs: [
+    name: 'accessManager',
+    inputs: [],
+    outputs: [
       {
-        name: 'dealId',
-        type: 'uint256',
-        internalType: 'uint256',
+        name: '',
+        type: 'address',
+        internalType: 'address',
       },
     ],
-    outputs: [],
-    stateMutability: 'nonpayable',
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -166,19 +127,6 @@ const PoRepMarketABI = [
   },
   {
     type: 'function',
-    name: 'activatePayment',
-    inputs: [
-      {
-        name: 'dealId',
-        type: 'uint256',
-        internalType: 'uint256',
-      },
-    ],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
     name: 'currentEvidenceStatus',
     inputs: [
       {
@@ -214,12 +162,12 @@ const PoRepMarketABI = [
             internalType: 'uint8',
           },
           {
-            name: 'checkedClaims',
+            name: 'checkedItems',
             type: 'uint256',
             internalType: 'uint256',
           },
           {
-            name: 'totalClaims',
+            name: 'totalItems',
             type: 'uint256',
             internalType: 'uint256',
           },
@@ -668,7 +616,18 @@ const PoRepMarketABI = [
   {
     type: 'function',
     name: 'getDeals',
-    inputs: [],
+    inputs: [
+      {
+        name: 'offset',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'limit',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
     outputs: [
       {
         name: 'deals',
@@ -726,6 +685,11 @@ const PoRepMarketABI = [
             internalType: 'CommonTypes.ChainEpoch',
           },
         ],
+      },
+      {
+        name: 'total',
+        type: 'uint256',
+        internalType: 'uint256',
       },
     ],
     stateMutability: 'view',
@@ -744,6 +708,16 @@ const PoRepMarketABI = [
         type: 'uint8',
         internalType: 'uint8',
       },
+      {
+        name: 'offset',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'limit',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
     ],
     outputs: [
       {
@@ -803,6 +777,11 @@ const PoRepMarketABI = [
           },
         ],
       },
+      {
+        name: 'total',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
     ],
     stateMutability: 'view',
   },
@@ -815,25 +794,6 @@ const PoRepMarketABI = [
         name: '',
         type: 'address',
         internalType: 'address',
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'getRoleAdmin',
-    inputs: [
-      {
-        name: 'role',
-        type: 'bytes32',
-        internalType: 'bytes32',
-      },
-    ],
-    outputs: [
-      {
-        name: '',
-        type: 'bytes32',
-        internalType: 'bytes32',
       },
     ],
     stateMutability: 'view',
@@ -866,52 +826,10 @@ const PoRepMarketABI = [
   },
   {
     type: 'function',
-    name: 'grantRole',
-    inputs: [
-      {
-        name: 'role',
-        type: 'bytes32',
-        internalType: 'bytes32',
-      },
-      {
-        name: 'account',
-        type: 'address',
-        internalType: 'address',
-      },
-    ],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'hasRole',
-    inputs: [
-      {
-        name: 'role',
-        type: 'bytes32',
-        internalType: 'bytes32',
-      },
-      {
-        name: 'account',
-        type: 'address',
-        internalType: 'address',
-      },
-    ],
-    outputs: [
-      {
-        name: '',
-        type: 'bool',
-        internalType: 'bool',
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     name: 'initialize',
     inputs: [
       {
-        name: '_admin',
+        name: '_accessManager',
         type: 'address',
         internalType: 'address',
       },
@@ -943,6 +861,11 @@ const PoRepMarketABI = [
     type: 'function',
     name: 'previewProviderForDeal',
     inputs: [
+      {
+        name: 'client',
+        type: 'address',
+        internalType: 'address',
+      },
       {
         name: 'request',
         type: 'tuple',
@@ -1236,6 +1159,11 @@ const PoRepMarketABI = [
           },
         ],
       },
+      {
+        name: 'client',
+        type: 'address',
+        internalType: 'address',
+      },
     ],
     outputs: [],
     stateMutability: 'nonpayable',
@@ -1295,12 +1223,12 @@ const PoRepMarketABI = [
             internalType: 'uint8',
           },
           {
-            name: 'checkedClaims',
+            name: 'checkedItems',
             type: 'uint256',
             internalType: 'uint256',
           },
           {
-            name: 'totalClaims',
+            name: 'totalItems',
             type: 'uint256',
             internalType: 'uint256',
           },
@@ -1317,42 +1245,6 @@ const PoRepMarketABI = [
         name: 'dealId',
         type: 'uint256',
         internalType: 'uint256',
-      },
-    ],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'renounceRole',
-    inputs: [
-      {
-        name: 'role',
-        type: 'bytes32',
-        internalType: 'bytes32',
-      },
-      {
-        name: 'callerConfirmation',
-        type: 'address',
-        internalType: 'address',
-      },
-    ],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'revokeRole',
-    inputs: [
-      {
-        name: 'role',
-        type: 'bytes32',
-        internalType: 'bytes32',
-      },
-      {
-        name: 'account',
-        type: 'address',
-        internalType: 'address',
       },
     ],
     outputs: [],
@@ -1445,25 +1337,6 @@ const PoRepMarketABI = [
   },
   {
     type: 'function',
-    name: 'supportsInterface',
-    inputs: [
-      {
-        name: 'interfaceId',
-        type: 'bytes4',
-        internalType: 'bytes4',
-      },
-    ],
-    outputs: [
-      {
-        name: '',
-        type: 'bool',
-        internalType: 'bool',
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     name: 'terminateDeal',
     inputs: [
       {
@@ -1493,6 +1366,16 @@ const PoRepMarketABI = [
         name: 'newManifestLocation',
         type: 'string',
         internalType: 'string',
+      },
+      {
+        name: 'newRequestedSizeBytes',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'newManifestHash',
+        type: 'bytes32',
+        internalType: 'bytes32',
       },
     ],
     outputs: [],
@@ -1809,7 +1692,7 @@ const PoRepMarketABI = [
   },
   {
     type: 'event',
-    name: 'ManifestLocationUpdated',
+    name: 'ManifestUpdated',
     inputs: [
       {
         name: 'dealId',
@@ -1828,6 +1711,30 @@ const PoRepMarketABI = [
         type: 'string',
         indexed: false,
         internalType: 'string',
+      },
+      {
+        name: 'oldRequestedSizeBytes',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+      {
+        name: 'newRequestedSizeBytes',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+      {
+        name: 'oldManifestHash',
+        type: 'bytes32',
+        indexed: false,
+        internalType: 'bytes32',
+      },
+      {
+        name: 'newManifestHash',
+        type: 'bytes32',
+        indexed: false,
+        internalType: 'bytes32',
       },
     ],
     anonymous: false,
@@ -1903,81 +1810,6 @@ const PoRepMarketABI = [
   },
   {
     type: 'event',
-    name: 'RoleAdminChanged',
-    inputs: [
-      {
-        name: 'role',
-        type: 'bytes32',
-        indexed: true,
-        internalType: 'bytes32',
-      },
-      {
-        name: 'previousAdminRole',
-        type: 'bytes32',
-        indexed: true,
-        internalType: 'bytes32',
-      },
-      {
-        name: 'newAdminRole',
-        type: 'bytes32',
-        indexed: true,
-        internalType: 'bytes32',
-      },
-    ],
-    anonymous: false,
-  },
-  {
-    type: 'event',
-    name: 'RoleGranted',
-    inputs: [
-      {
-        name: 'role',
-        type: 'bytes32',
-        indexed: true,
-        internalType: 'bytes32',
-      },
-      {
-        name: 'account',
-        type: 'address',
-        indexed: true,
-        internalType: 'address',
-      },
-      {
-        name: 'sender',
-        type: 'address',
-        indexed: true,
-        internalType: 'address',
-      },
-    ],
-    anonymous: false,
-  },
-  {
-    type: 'event',
-    name: 'RoleRevoked',
-    inputs: [
-      {
-        name: 'role',
-        type: 'bytes32',
-        indexed: true,
-        internalType: 'bytes32',
-      },
-      {
-        name: 'account',
-        type: 'address',
-        indexed: true,
-        internalType: 'address',
-      },
-      {
-        name: 'sender',
-        type: 'address',
-        indexed: true,
-        internalType: 'address',
-      },
-    ],
-    anonymous: false,
-  },
-  {
-    type: 'event',
     name: 'Upgraded',
     inputs: [
       {
@@ -2007,11 +1839,6 @@ const PoRepMarketABI = [
       },
     ],
     anonymous: false,
-  },
-  {
-    type: 'error',
-    name: 'AccessControlBadConfirmation',
-    inputs: [],
   },
   {
     type: 'error',
@@ -2154,12 +1981,70 @@ const PoRepMarketABI = [
   },
   {
     type: 'error',
+    name: 'EvidenceRefreshNotAllowed',
+    inputs: [
+      {
+        name: 'dealId',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'state',
+        type: 'uint8',
+        internalType: 'uint8',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'EvidenceRefreshWindowEnded',
+    inputs: [
+      {
+        name: 'dealId',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'serviceEndEpoch',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'currentEpoch',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'EvidenceTooStale',
+    inputs: [],
+  },
+  {
+    type: 'error',
     name: 'FailedCall',
     inputs: [],
   },
   {
     type: 'error',
+    name: 'InvalidAccessManager',
+    inputs: [
+      {
+        name: 'manager',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+  },
+  {
+    type: 'error',
     name: 'InvalidBilled32GiBUnits',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'InvalidClientAddress',
     inputs: [],
   },
   {
@@ -2279,6 +2164,11 @@ const PoRepMarketABI = [
   },
   {
     type: 'error',
+    name: 'ManifestUpdateNotAllowedAfterEvidence',
+    inputs: [],
+  },
+  {
+    type: 'error',
     name: 'MinEpochsBetweenSettlementsExceeded',
     inputs: [],
   },
@@ -2347,6 +2237,22 @@ const PoRepMarketABI = [
   },
   {
     type: 'error',
+    name: 'ServiceAlreadyEnded',
+    inputs: [
+      {
+        name: 'serviceEndEpoch',
+        type: 'int64',
+        internalType: 'int64',
+      },
+      {
+        name: 'currentEpoch',
+        type: 'int64',
+        internalType: 'int64',
+      },
+    ],
+  },
+  {
+    type: 'error',
     name: 'ServiceNotEnded',
     inputs: [
       {
@@ -2356,6 +2262,22 @@ const PoRepMarketABI = [
       },
       {
         name: 'currentEpoch',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'SettlementTooEarly',
+    inputs: [
+      {
+        name: 'requestedToEpoch',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'earliestSettlementEpoch',
         type: 'uint256',
         internalType: 'uint256',
       },
