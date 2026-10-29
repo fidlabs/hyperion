@@ -102,7 +102,7 @@ const poRepMarketEvents = [
   getAbiItem({ abi: PoRepMarketABI, name: 'DealFinalized' }),
   getAbiItem({ abi: PoRepMarketABI, name: 'DealTerminated' }),
   getAbiItem({ abi: PoRepMarketABI, name: 'DealRejected' }),
-  getAbiItem({ abi: PoRepMarketABI, name: 'ManifestLocationUpdated' }),
+  getAbiItem({ abi: PoRepMarketABI, name: 'ManifestUpdated' }),
 ] as const satisfies AbiEvent[];
 
 const events = [
@@ -819,10 +819,17 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
             terminatedDealsStates.get(log.args.dealId.toString()) ??
             PoRepDealState.EARLY_TERMINATED,
         };
-      case 'ManifestLocationUpdated':
+      case 'ManifestUpdated':
         return {
           ...previousUpdateInput,
+          manifestHash: log.args.newManifestHash,
           manifestLocation: log.args.newManifestLocation,
+          totalDealSize: log.args.newRequestedSizeBytes,
+          terms: {
+            update: {
+              deal_size_bytes: log.args.newRequestedSizeBytes,
+            },
+          },
         };
       default:
         return previousUpdateInput;
