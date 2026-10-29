@@ -5,6 +5,7 @@ import {
   getSchemaPath,
   IntersectionType,
 } from '@nestjs/swagger';
+import { IsNumberString, IsOptional } from 'class-validator';
 import { BigIntString } from 'src/utils/utils';
 
 export class PaginationInfoRequest {
@@ -13,6 +14,8 @@ export class PaginationInfoRequest {
     minimum: 1,
     type: Number,
   })
+  @IsOptional()
+  @IsNumberString()
   limit?: string;
 
   @ApiPropertyOptional({
@@ -20,6 +23,8 @@ export class PaginationInfoRequest {
     minimum: 1,
     type: Number,
   })
+  @IsOptional()
+  @IsNumberString()
   page?: string;
 }
 
