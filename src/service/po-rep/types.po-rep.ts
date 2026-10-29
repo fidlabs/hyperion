@@ -517,6 +517,23 @@ export class PoRepProviderStorageStatistics {
   onboardedDealsCount: number;
 
   @ApiProperty({
+    description: `Number of failed deals, eg. deals in
+      "${PoRepDealState.EARLY_TERMINATED}" state, including deals terminated
+      for missed proofs.`,
+  })
+  failedDealsCount: number;
+
+  @ApiProperty({
+    description: `Number of deals in "${PoRepDealState.REJECTED}" state.`,
+  })
+  rejectedDealsCount: number;
+
+  @ApiProperty({
+    description: `Number of deals in "${PoRepDealState.EXPIRED}" state.`,
+  })
+  expiredDealsCount: number;
+
+  @ApiProperty({
     description: `Total space available in bytes, declared by storage provider.`,
   })
   totalAvailableBytes: bigint;
@@ -536,6 +553,18 @@ export class PoRepProviderStorageStatistics {
       "${PoRepDealState.ACTIVE}") state and with active payment rail)`,
   })
   onboardedBytes: bigint;
+
+  @ApiProperty({
+    description: `Space in bytes in active deals of
+      "${PoRepDealType.PUBLIC}" type.`,
+  })
+  onboardedPublicBytes: bigint;
+
+  @ApiProperty({
+    description: `Space in bytes in active deals of
+      "${PoRepDealType.PRIVATE}" type.`,
+  })
+  onboardedPrivateBytes: bigint;
 }
 
 export class PoRepProviderEconomicsStatistics {
@@ -561,9 +590,36 @@ export class PoRepProviderEconomicsStatistics {
   predictedRevenueUSD: number;
 
   @ApiProperty({
-    description: 'Total net amount settled for all deals in USD',
+    description: `Total amount settled for all deals in USD. Includes network
+      fees and operator commission.`,
   })
   totalSettledUSD: number;
+
+  @ApiProperty({
+    description: `Total net amount settled to provider for all deals in USD,
+      eg. revenue to date.`,
+  })
+  totalNetSettledUSD: number;
+
+  @ApiProperty({
+    description: 'Net amount settled to provider in the last 90 days, in USD',
+  })
+  last90DaysNetSettledUSD: number;
+
+  @ApiProperty({
+    description:
+      'Net amount settled to provider in the 90 days before the last 90 days, in USD',
+  })
+  previous90DaysNetSettledUSD: number;
+
+  @ApiProperty({
+    description: `90-day revenue growth, eg. relative change of net amount
+      settled in the last 90 days against the 90 days before, represented as a
+      floating point number, eg. value of 0.1 means 10% growth. Null if nothing
+      was settled in the previous period.`,
+    nullable: true,
+  })
+  revenueGrowth90Days: number | null;
 
   @ApiProperty({
     description:
@@ -827,322 +883,6 @@ export class PoRepClientsList {
     type: [PoRepClient],
   })
   data: PoRepClient[];
-
-  @ApiProperty({
-    description: 'Pagination metadata',
-    type: PaginationMetadata,
-  })
-  pagination: PaginationMetadata;
-}
-
-// Providers
-const providersAvailableSortingKeys = [
-  'revenueUSD',
-  'currentPeriodRevenueUSD',
-  'revenueGrowth',
-  'activeContractsCount',
-  'dataUnderContractBytes',
-  'failedContractsCount',
-  'dealsCount',
-  'registeredAt',
-  'lastDealAt',
-] as const;
-
-export type PoRepProvidersSortingKey =
-  (typeof providersAvailableSortingKeys)[number];
-
-export class PoRepProvidersListParameters extends PaginationParameters {
-  @ApiPropertyOptional({
-    description: `Set to true to show active providers only. Provider is
-      considered active when it has at least one active contract (deal in
-      ${PoRepDealState.ACTIVE} state with payment rail in
-      ${DealRailState.ACTIVE} or ${DealRailState.TERMINATED} state).`,
-    required: false,
-  })
-  @IsOptional()
-  @IsBooleanString()
-  activeOnly?: 'true' | 'false';
-
-  @ApiPropertyOptional({
-    description:
-      'Optional sorting key, if not provided providers will be sorted by revenue descending. Null values are always placed last.',
-    enumName: 'ProvidersListSortingKey',
-    enum: providersAvailableSortingKeys,
-    required: false,
-    default: 'revenueUSD',
-  })
-  @IsOptional()
-  @IsIn(providersAvailableSortingKeys)
-  sort?: PoRepProvidersSortingKey;
-
-  @ApiPropertyOptional({
-    description: 'Optional sorting direction, "desc" by default',
-    enumName: 'ProvidersListSortingDirection',
-    enum: ['asc', 'desc'],
-    required: false,
-    default: 'desc',
-  })
-  @IsOptional()
-  @IsIn(['asc', 'desc'])
-  order?: 'asc' | 'desc';
-}
-
-export class PoRepProviderParameters {
-  @ApiProperty({
-    description: 'Storage provider id',
-    type: 'string',
-  })
-  @IsF0IdInput()
-  providerId: F0IdInput;
-}
-
-export class PoRepProviderTokenRevenue {
-  @ApiProperty({
-    description: 'Address of ERC20 token used for payment rails',
-  })
-  tokenAddress: string;
-
-  @ApiProperty({
-    description: 'Symbol of ERC20 token used for payment rails',
-  })
-  tokenSymbol: string;
-
-  @ApiProperty({
-    description: 'Number of decimal places of ERC20 token',
-  })
-  tokenDecimals: number;
-
-  @ApiProperty({
-    description: `Total net amount settled to the provider in that token, in
-      Wei (smallest non-dividable unit of the token).`,
-    type: 'string',
-  })
-  revenueWei: bigint;
-
-  @ApiProperty({
-    description: 'Net amount settled in the last 90 days, in Wei',
-    type: 'string',
-  })
-  currentPeriodRevenueWei: bigint;
-
-  @ApiProperty({
-    description:
-      'Net amount settled in the 90 days before the last 90 days, in Wei',
-    type: 'string',
-  })
-  previousPeriodRevenueWei: bigint;
-
-  constructor(tokenRevenue: PoRepProviderTokenRevenue) {
-    Object.assign(this, tokenRevenue);
-  }
-}
-
-export class PoRepProviderDealsCountByState {
-  @ApiProperty({
-    description: 'Deal state',
-    enum: PoRepDealState,
-    enumName: 'PoRepDealState',
-  })
-  state: PoRepDealState;
-
-  @ApiProperty({
-    description: 'Number of provider deals in that state',
-  })
-  dealsCount: number;
-}
-
-export class PoRepProviderDataByDealType {
-  @ApiProperty({
-    description: 'Deal type',
-    enum: PoRepDealType,
-    enumName: 'PoRepDealType',
-  })
-  dealType: PoRepDealType;
-
-  @ApiProperty({
-    description: 'Size in bytes of active contracts of that deal type',
-    type: 'string',
-  })
-  dataUnderContractBytes: bigint;
-}
-
-export class PoRepProvider {
-  @ApiProperty({
-    description: 'Storage provider id in form of a f0 address',
-    type: 'string',
-  })
-  @Transform(({ value }) => (value as F0Id).toString())
-  providerId: F0Id;
-
-  @ApiProperty({
-    description: 'EVM address of the organization owning the provider',
-  })
-  organization: string;
-
-  @ApiProperty({
-    description: 'EVM address receiving payments for provider deals',
-  })
-  payee: string;
-
-  @ApiProperty({
-    description: 'Flag telling if provider is paused in SP Registry',
-  })
-  paused: boolean;
-
-  @ApiProperty({
-    description: 'Flag telling if provider is blocked in SP Registry',
-  })
-  blocked: boolean;
-
-  @ApiProperty({
-    description: `Flag telling if provider has at least one active contract,
-      eg. at least one active PoRep market deal.`,
-  })
-  active: boolean;
-
-  @ApiProperty({
-    description: 'Total space available in bytes, declared by provider',
-    type: 'string',
-  })
-  availableBytes: bigint;
-
-  @ApiProperty({
-    description: 'Space in bytes reserved for deals not yet accepted',
-    type: 'string',
-  })
-  pendingBytes: bigint;
-
-  @ApiProperty({
-    description: 'Space in bytes committed for accepted deals',
-    type: 'string',
-  })
-  committedBytes: bigint;
-
-  @ApiProperty({
-    description: 'Total count of deals made with provider, in any state',
-  })
-  dealsCount: number;
-
-  @ApiProperty({
-    description: 'Count of provider deals in each deal state',
-    type: [PoRepProviderDealsCountByState],
-  })
-  dealsCountByState: PoRepProviderDealsCountByState[];
-
-  @ApiProperty({
-    description: `Count of active contracts, eg. deals in
-      ${PoRepDealState.ACTIVE} state with payment rail in
-      ${DealRailState.ACTIVE} or ${DealRailState.TERMINATED} state.`,
-  })
-  activeContractsCount: number;
-
-  @ApiProperty({
-    description: 'Total size in bytes of active contracts',
-    type: 'string',
-  })
-  dataUnderContractBytes: bigint;
-
-  @ApiProperty({
-    description: 'Size in bytes of active contracts per deal type',
-    type: [PoRepProviderDataByDealType],
-  })
-  dataUnderContractByDealType: PoRepProviderDataByDealType[];
-
-  @ApiProperty({
-    description: `Count of failed contracts, eg. deals in
-      ${PoRepDealState.EARLY_TERMINATED} state, including deals terminated
-      for missed proofs.`,
-  })
-  failedContractsCount: number;
-
-  @ApiProperty({
-    description: `Count of deals in ${PoRepDealState.REJECTED} state`,
-  })
-  rejectedDealsCount: number;
-
-  @ApiProperty({
-    description: `Count of deals in ${PoRepDealState.EXPIRED} state`,
-  })
-  expiredDealsCount: number;
-
-  @ApiProperty({
-    description: `Revenue to date, eg. total net amount settled to the
-      provider on PoRep market rails, in USD.`,
-  })
-  revenueUSD: number;
-
-  @ApiProperty({
-    description: 'Net amount settled in the last 90 days, in USD',
-  })
-  currentPeriodRevenueUSD: number;
-
-  @ApiProperty({
-    description:
-      'Net amount settled in the 90 days before the last 90 days, in USD',
-  })
-  previousPeriodRevenueUSD: number;
-
-  @ApiProperty({
-    description: `90-day revenue growth, eg. relative change of revenue in the
-      last 90 days against the 90 days before, represented as a floating point
-      number, eg. value of 0.1 means 10% growth. Null if there was no revenue
-      in the previous period.`,
-    nullable: true,
-  })
-  revenueGrowth: number | null;
-
-  @ApiProperty({
-    description: 'Revenue amounts per payment token',
-    type: [PoRepProviderTokenRevenue],
-  })
-  tokens: PoRepProviderTokenRevenue[];
-
-  @ApiProperty({
-    description: 'ISO Datetime of provider registration in SP Registry',
-  })
-  @Transform(({ value }) => (value as Date).toISOString())
-  registeredAt: Date;
-
-  @ApiProperty({
-    description: `ISO Datetime of the first deal proposal made with provider.
-      Null if provider has no deals.`,
-    nullable: true,
-  })
-  @Transform(({ value }) => {
-    if (value instanceof Date) {
-      return value.toISOString();
-    }
-
-    return null;
-  })
-  firstDealAt: Date | null;
-
-  @ApiProperty({
-    description: `ISO Datetime of the latest deal proposal made with provider.
-      Null if provider has no deals.`,
-    nullable: true,
-  })
-  @Transform(({ value }) => {
-    if (value instanceof Date) {
-      return value.toISOString();
-    }
-
-    return null;
-  })
-  lastDealAt: Date | null;
-
-  constructor(provider: PoRepProvider) {
-    Object.assign(this, provider);
-  }
-}
-
-export class PoRepProvidersList {
-  @ApiProperty({
-    description:
-      'Paginated and sorted list of providers matching provided parameters.',
-    type: [PoRepProvider],
-  })
-  data: PoRepProvider[];
 
   @ApiProperty({
     description: 'Pagination metadata',

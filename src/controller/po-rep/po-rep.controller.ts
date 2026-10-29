@@ -15,6 +15,8 @@ import {
   ApiOkResponse,
   ApiOperation,
 } from '@nestjs/swagger';
+import { PrismaService } from 'src/db/prisma.service';
+import { PoRepDealState, Prisma } from 'src/generated/prisma/client';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
   PoRepClient,
@@ -31,18 +33,23 @@ import {
   PoRepOnboardedDataHistoryParameters,
   PoRepOverview,
   PoRepOverviewParameters,
-  PoRepProvider,
-  PoRepProviderParameters,
-  PoRepProvidersList,
-  PoRepProvidersListParameters,
+  PoRepProviderEconomicsStatistics,
+  PoRepProviderStorageStatistics,
 } from 'src/service/po-rep/types.po-rep';
+import { F0Id, stringToBool } from 'src/utils/utils';
 import { ControllerBase } from '../base/controller-base';
+import {
+  GetPoRepProvidersResponse,
+  PoRepProviderResourceParameters,
+  PoRepProvidersListParameters,
+} from './types.po-rep';
 
 @Controller('po-rep')
 @CacheTTL(1000 * 60 * 30) // 30 minutes
 export class PoRepController extends ControllerBase {
   constructor(
     @Inject(CACHE_MANAGER) private _cacheManager: Cache,
+    private readonly prismaService: PrismaService,
     private readonly poRepService: PoRepService,
   ) {
     super();
@@ -166,49 +173,140 @@ export class PoRepController extends ControllerBase {
   }
 
   @Get('/providers')
-  @UseInterceptors(ClassSerializerInterceptor)
   @ApiOperation({
-    summary:
-      'Get list of storage providers registered in SP Registry with their aggregates',
+    summary: 'Get list of storage providers participating in PoRep market',
   })
   @ApiOkResponse({
-    type: PoRepProvidersList,
+    description: 'List of storage providers participating in PoRep market',
+    type: GetPoRepProvidersResponse,
   })
-  @ApiBadRequestResponse({
-    description: 'Query parameters validation error',
-  })
-  public getProviders(
-    @Query(new ValidationPipe({ transform: true }))
-    query: PoRepProvidersListParameters,
-  ): Promise<PoRepProvidersList> {
-    return this.poRepService.getProvidersList(query);
+  public async getParticipants(
+    @Query(new ValidationPipe()) query: PoRepProvidersListParameters,
+  ): Promise<GetPoRepProvidersResponse> {
+    const { filter } = query;
+    const paginationInfo = this.validatePaginationInfo(query);
+    const showActive = stringToBool(query.showActive);
+
+    const where = {
+      AND: [
+        filter ? { providerId: F0Id.from(filter).toBigInt() } : {},
+        showActive !== null
+          ? {
+              [showActive ? 'AND' : 'OR']: [
+                { paused: !showActive },
+                { blocked: !showActive },
+              ],
+            }
+          : {},
+      ],
+    } satisfies Prisma.po_rep_storage_providerWhereInput;
+
+    const [providers, totalCount] = await this.prismaService.$transaction([
+      this.prismaService.po_rep_storage_provider.findMany({
+        ...this.validateQueryPagination(paginationInfo),
+        include: {
+          _count: {
+            select: {
+              deals: {
+                where: {
+                  state: {
+                    in: [PoRepDealState.ACCEPTED, PoRepDealState.ACTIVE],
+                  },
+                },
+              },
+            },
+          },
+        },
+        where: where,
+        orderBy:
+          showActive === null
+            ? [
+                { paused: 'asc' },
+                { blocked: 'asc' },
+                { registeredAtBlock: 'desc' },
+              ]
+            : [
+                {
+                  registeredAtBlock: 'desc',
+                },
+              ],
+      }),
+      this.prismaService.po_rep_storage_provider.count({ where: where }),
+    ]);
+
+    const data = providers.map((provider) => {
+      return {
+        providerId: 'f0' + provider.providerId.toString(),
+        paused: provider.paused,
+        blocked: provider.blocked,
+        availableBytes: provider.availableBytes.toString(),
+        committedBytes: provider.committedBytes.toString(),
+        pendingBytes: provider.pendingBytes.toString(),
+        activeDealsCount: provider._count.deals,
+        registeredAtBlock: provider.registeredAtBlock.toString(),
+      };
+    });
+
+    return this.withPaginationInfo(
+      {
+        data: data,
+      },
+      query,
+      totalCount,
+    );
   }
 
-  @Get('/providers/:providerId')
-  @UseInterceptors(ClassSerializerInterceptor)
+  @Get('/providers/:providerId/storage-stats')
   @ApiOperation({
-    summary: 'Get aggregates of a single storage provider',
+    summary: 'Get po-rep storage statistics for given provider id.',
   })
   @ApiOkResponse({
-    type: PoRepProvider,
+    description: 'Po-rep provider storage statistics',
+    type: PoRepProviderStorageStatistics,
   })
   @ApiBadRequestResponse({
-    description: 'Invalid provider id',
+    description: 'Error response when invalid provider id is given.',
   })
   @ApiNotFoundResponse({
-    description: 'Provider is not registered in SP Registry',
+    description: 'Error response when provider with given id does not exist.',
   })
-  public async getProvider(
-    @Param(new ValidationPipe()) { providerId }: PoRepProviderParameters,
-  ): Promise<PoRepProvider> {
-    const provider = await this.poRepService.getProvider(providerId);
+  public async getProviderStorageStatistics(
+    @Param(new ValidationPipe())
+    parameters: PoRepProviderResourceParameters,
+  ): Promise<PoRepProviderStorageStatistics> {
+    const stats = await this.poRepService.getProviderStorageStatistics(
+      parameters.providerId,
+    );
 
-    if (!provider) {
+    if (!stats) {
       throw new NotFoundException(
-        `PoRep provider with id "${providerId}" does not exist`,
+        `Po-rep provider with ID "${parameters.providerId}" does not exist.`,
       );
     }
 
-    return provider;
+    return stats;
+  }
+
+  @Get('/providers/:providerId/economics-stats')
+  @ApiOperation({
+    summary: 'Get po-rep economics statistics for given provider id.',
+  })
+  @ApiOkResponse({
+    description: 'Po-rep provider economics statistics',
+    type: PoRepProviderEconomicsStatistics,
+  })
+  @ApiBadRequestResponse({
+    description: 'Error response when invalid provider id is given.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Error response when provider with given id does not exist.',
+  })
+  public getProviderEconomicsStatistics(
+    @Param(new ValidationPipe())
+    parameters: PoRepProviderResourceParameters,
+  ): Promise<PoRepProviderEconomicsStatistics> {
+    return this.poRepService.getProviderEconomicsStatistics(
+      parameters.providerId,
+    );
   }
 }
