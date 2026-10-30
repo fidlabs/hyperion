@@ -1,129 +1,76 @@
 name: Publish new build
-run-name: "Publish new images for ${{ github.ref_name }}, env: ${{ inputs.deploy_environment }}, triggered by ${{ github.actor }}; version: ${{ inputs.version || 'N/A'}}"
+run-name: "Publish images for ${{ github.event.release.tag_name || format('pr-{0}', github.event.pull_request.number) }}"
 
 on:
   pull_request:
-    types: [opened, synchronize]
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Enter the version number"
-        required: true
-      deploy_environment:
-        required: false
-        description: "Select the environment to deploy to"
-        type: choice
-        options:
-          - none
-          - staging
-        default: none
+    types: [opened, synchronize, reopened]
+  release:
+    types: [published]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: publish-${{ github.event_name == 'release' && 'release-staging' || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   code-check:
-    uses: ./.github/workflows/code-check.yml
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+    with:
+      commit_sha: ${{ needs.prepare.outputs.commit_sha }}
 
-  check-db:
-    needs:
-      - code-check
-    uses: ./.github/workflows/check-db.yml
-
-  bump-version:
+  prepare:
     runs-on: ubuntu-latest
-    if: ${{ github.ref_name == 'main' && inputs.version != '' }}
-    needs:
-      - code-check
-      - check-db
+    if: >-
+      github.event_name == 'release' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     outputs:
-      commit_sha: ${{ steps.commit-version.outputs.commit_sha }}
-
+      version: ${{ steps.ref.outputs.version }}
+      commit_sha: ${{ steps.ref.outputs.commit_sha }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Install semver
-        run: npm install semver
-
-      - name: Get current version
-        run: echo "current_version=$(jq -r '.version' package.json)" >> $GITHUB_ENV
-
-      - name: Validate and set new version
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve release tag or PR commit
+        id: ref
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          new_version="${{ inputs.version }}"
-          current_version="${{ env.current_version }}"
-
-          if npx semver $new_version -r "<=$current_version"; then
-            echo "Error: New version ($new_version) is lowest or the same as current ($current_version)"
+          if [ "$EVENT_NAME" = pull_request ]; then
+            echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ ! "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Expected a semantic version release tag"
             exit 1
           fi
-
-      - name: Bump version
-        run: |
-          npm version ${{ inputs.version }} --no-git-tag-version
-
-      - name: Git config
-        run: |
-          git config user.name "${GITHUB_ACTOR}"
-          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
-
-      - name: Commit version change
-        id: commit-version
-        run: |
-          git commit -am "Update version to ${{ inputs.version }}"
-          git push origin main
-          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          commit_sha=$(git rev-parse --verify "refs/tags/${VERSION}^{commit}")
+          git merge-base --is-ancestor "$commit_sha" origin/main
+          echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
 
   build-and-publish:
-    needs:
-      - code-check
-      - check-db
-      - bump-version
-    if: |
-      always() &&
-      !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled')
+    needs: [prepare, code-check]
     uses: ./.github/workflows/build-docker-image.yml
     with:
-      version: ${{ inputs.version }}
-      commit_sha: ${{ github.ref_name == 'main' && inputs.version != '' && needs.bump-version.outputs.commit_sha || '' }}
+      version: ${{ needs.prepare.outputs.version }}
+      commit_sha: ${{ needs.prepare.outputs.commit_sha }}
     secrets: inherit
 
-  git-tag:
-    runs-on: ubuntu-latest
-    needs:
-      - bump-version
-      - build-and-publish
-    if: ${{ github.ref_name == 'main' && inputs.version != '' && always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.bump-version.outputs.commit_sha }}
-
-      - name: Create and push tag
-        run: |
-          TAG_NAME="v${{ inputs.version }}"
-          git tag $TAG_NAME
-          git push origin $TAG_NAME
-
   trigger-staging-deploy:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
-    needs:
-      - code-check
-      - build-and-publish
-    if: ${{ inputs.version != '' && inputs.deploy_environment != 'none' }}
-    environment: production
+    environment: staging
+    needs: [prepare, build-and-publish]
     steps:
-      - name: Trigger ${{ inputs.deploy_environment }} deploy
+      - name: Trigger staging deploy
         uses: neti-filplus-infra/filplus-deploy-action@main
         with:
-          version: ${{ inputs.version }}
-          environment: ${{ inputs.deploy_environment }}
+          version: ${{ needs.prepare.outputs.version }}
+          environment: staging
           ecr-repository: hyperion
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_IMAGE_DEPLOYER }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_IMAGE_DEPLOYER }}

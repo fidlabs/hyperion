@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      commit_sha:
+        required: false
+        type: string
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    uses: ./.github/workflows/code-check.yml
+    with:
+      commit_sha: ${{ inputs.commit_sha }}
+
+  check-db:
+    needs: quality
+    uses: ./.github/workflows/check-db.yml
+    with:
+      commit_sha: ${{ inputs.commit_sha }}
