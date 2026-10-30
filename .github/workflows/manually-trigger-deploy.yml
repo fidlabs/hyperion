@@ -1,16 +1,16 @@
-name: Manually trigger deploy to staging, development or production
-run-name: "Manually deploy ${{ github.ref_name }} triggered by ${{ github.actor }}; version: ${{ inputs.version }}"
+name: Manually trigger deploy to staging or production
+run-name: 'Manually deploy ${{ github.ref_name }} triggered by ${{ github.actor }}; version: ${{ inputs.version }}'
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Enter the version number"
+        description: 'Enter a release version without v (e.g. 0.1.0)'
         required: true
-        default: "main"
+        type: string
       environment:
         required: false
-        description: "Select the environment to deploy to"
+        description: 'Select the environment to deploy to'
         type: choice
         options:
           - staging
@@ -24,8 +24,18 @@ permissions:
 jobs:
   trigger-deploy:
     runs-on: ubuntu-latest
-    if: ${{ inputs.version != '' && (inputs.environment != 'production' || (inputs.environment == 'production' && github.ref_name == 'main')) }}
+    environment: ${{ inputs.environment }}
+    if: ${{ inputs.version != '' && (inputs.environment != 'production' || github.ref_name == 'main') }}
     steps:
+      - name: Require a release version for production
+        if: inputs.environment == 'production'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$VERSION" = main ]; then
+            echo "Enter a release version for production."
+            exit 1
+          fi
       - name: Trigger ${{ inputs.environment }} deploy
         uses: neti-filplus-infra/filplus-deploy-action@main
         with:
