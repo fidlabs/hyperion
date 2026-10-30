@@ -17,7 +17,6 @@ module.exports = {
   },
   ignorePatterns: ['.eslintrc.js', 'src/db/auto-generated/**'],
   rules: {
-    'object-shorthand': ['error', 'never'],
     '@typescript-eslint/interface-name-prefix': 'off',
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/explicit-module-boundary-types': 'off',
