@@ -148,6 +148,27 @@ export function bigIntMul(a: bigint, b: number, precision = 6): bigint {
   );
 }
 
+export function maxBigInt(...inputs: [bigint, ...bigint[]]): bigint {
+  return inputs.reduce((max, current) => {
+    return current > max ? current : max;
+  });
+}
+
+export function compareNullableNumber<T extends number | bigint>(
+  a: T | null,
+  b: T | null,
+  order: 'asc' | 'desc',
+): -1 | 1 | 0 {
+  const lowerValue = order === 'asc' ? -1 : 1;
+  const higherValue = (lowerValue * -1) as -1 | 1;
+
+  if (a === null && b === null) return 0;
+  if (a === null) return lowerValue;
+  if (b === null) return higherValue;
+
+  return a < b ? lowerValue : a > b ? higherValue : 0;
+}
+
 export function arrayAverage(arr?: number[]): number | null {
   const result = arr?.reduce((acc, val) => acc + val, 0) / arr?.length;
   return Number.isFinite(result) ? result : null;
