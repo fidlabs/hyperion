@@ -10,6 +10,7 @@ import axiosBetterStacktrace from 'axios-better-stacktrace';
 import { AppController } from './controller/app/app.controller';
 import { FilecoinPayController } from './controller/filecoin-pay/filecoin-pay.controller';
 import { PoRepController } from './controller/po-rep/po-rep.controller';
+import { StorageProvidersController } from './controller/storage-providers/storage-providers.controller';
 import { PostgresService } from './db/postgres.service';
 import { PrismaService } from './db/prisma.service';
 import { IpniAdvertisementFetcherJobService } from './jobs/ipni-advertisement-fetcher-job/ipni-advertisement-fetcher-job.service';
@@ -40,6 +41,7 @@ import { IPNIController } from 'src/controller/ipni/ipni.controller';
   ],
   controllers: [
     PoRepController,
+    StorageProvidersController,
     FilecoinPayController,
     AppController,
     IPNIController,
