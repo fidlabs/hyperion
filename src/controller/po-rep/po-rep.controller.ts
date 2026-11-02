@@ -15,8 +15,6 @@ import {
   ApiOkResponse,
   ApiOperation,
 } from '@nestjs/swagger';
-import { PrismaService } from 'src/db/prisma.service';
-import { PoRepDealState, Prisma } from 'src/generated/prisma/client';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
   PoRepClient,
@@ -33,12 +31,11 @@ import {
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderComplianceStatistics,
-  PoRepSLIComplianceHistoryEntry,
-  PoRepSLIComplianceHistoryParameters,
   PoRepProviderEconomicsStatistics,
   PoRepProviderStorageStatistics,
+  PoRepSLIComplianceHistoryEntry,
+  PoRepSLIComplianceHistoryParameters,
 } from 'src/service/po-rep/types.po-rep';
-import { F0Id, stringToBool } from 'src/utils/utils';
 import { ControllerBase } from '../base/controller-base';
 import {
   PoRepClientHistoryParameters,
@@ -53,7 +50,6 @@ import {
 export class PoRepController extends ControllerBase {
   constructor(
     @Inject(CACHE_MANAGER) private _cacheManager: Cache,
-    private readonly prismaService: PrismaService,
     private readonly poRepService: PoRepService,
   ) {
     super();
