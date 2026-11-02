@@ -14,6 +14,7 @@ import { createPoRepProviderStorageStatisticsQuery } from 'src/db/queries/po-rep
 import {
   createPoRepActiveProvidersCountQuery,
   createPoRepProvidersEarningsQuery,
+  createPoRepProvidersHistoryQuery,
 } from 'src/db/queries/po-rep-providers-statistics.query';
 import { PoRepPublicClient, RECENT_NODE_CLIENT } from 'src/po-rep-indexer';
 import {
@@ -42,9 +43,11 @@ import {
   PoRepDealsValueHistoryEntry,
   PoRepDealsValueHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
+  PoRepHistoryParameters,
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderComplianceStatistics,
   PoRepProviderEconomicsStatistics,
+  PoRepProvidersHistoryEntry,
   PoRepProvidersStatistics,
   PoRepProviderStorageStatistics,
   PoRepSLIComplianceHistoryEntry,
@@ -404,6 +407,43 @@ export class PoRepService {
       ),
       earningsUSD: earningsUSD.toDecimalPlaces(2).toNumber(),
     };
+  }
+
+  public async getProvidersHistory(
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepProvidersHistoryEntry[]> {
+    const results = await createPoRepProvidersHistoryQuery(this.queryBuilder, {
+      genesisTimestamp: getFilecoinGenesisTimestamp({
+        testnet: this.isTestnet(),
+      }),
+      windowSize: windowSize,
+      periodStart: periodStart !== null ? periodStart.toJSDate() : null,
+    }).execute();
+
+    const firstWindowDate =
+      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+
+    return results
+      .map((result) => {
+        return {
+          date: DateTime.fromJSDate(result.window_start, {
+            zone: 'UTC',
+          }).toISODate(),
+          newProvidersCount: stringToNumber(
+            result.new_providers_count.toString(),
+          ),
+          totalProvidersCount: stringToNumber(
+            result.total_providers_count.toString(),
+          ),
+          activeProvidersCount: stringToNumber(
+            result.active_providers_count.toString(),
+          ),
+        };
+      })
+      .filter(
+        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+      );
   }
 
   public async getDealsPaymentsSummaryHistory({

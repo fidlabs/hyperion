@@ -18,10 +18,13 @@ import {
   DashboardPeriodBoundaries,
 } from '../base/controller-base';
 import {
+  DashboardService,
   DashboardServiceValue,
   DashboardStatisticsRequest,
 } from '../base/types.controller-base';
 import {
+  StorageProvidersHistoryEntry,
+  StorageProvidersHistoryRequest,
   StorageProvidersPeriodStatistics,
   StorageProvidersStatistics,
 } from './types.storage-providers';
@@ -53,11 +56,7 @@ export class StorageProvidersController extends ControllerBase {
   public async getStatistics(
     @Query() { period = '30d', service = 'all' }: DashboardStatisticsRequest,
   ): Promise<StorageProvidersStatistics> {
-    if (service === 'fwss') {
-      throw new NotImplementedException(
-        'Storage providers statistics for FWSS are not implemented yet',
-      );
-    }
+    this.validateServiceImplemented(service);
 
     const periods = this.getDashboardPeriods(period);
     const [current, previous] = await Promise.all([
@@ -75,6 +74,45 @@ export class StorageProvidersController extends ControllerBase {
     };
   }
 
+  @Get('/history')
+  @ApiOperation({
+    summary:
+      'Get history of new, total and active storage providers, starting from the period start',
+  })
+  @ApiOkResponse({
+    type: [StorageProvidersHistoryEntry],
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  @ApiNotImplementedResponse({
+    description: 'History for FWSS is not implemented yet',
+  })
+  public async getHistory(
+    @Query()
+    {
+      period = '30d',
+      service = 'all',
+      windowSize = 'day',
+    }: StorageProvidersHistoryRequest,
+  ): Promise<StorageProvidersHistoryEntry[]> {
+    this.validateServiceImplemented(service);
+
+    const fcss = await this.poRepService.getProvidersHistory(
+      this.getDashboardPeriods(period).current.periodStart,
+      windowSize,
+    );
+
+    return fcss.map((entry) => {
+      return {
+        date: entry.date,
+        newProvidersCount: this.fcssOnly(entry.newProvidersCount),
+        totalProvidersCount: this.fcssOnly(entry.totalProvidersCount),
+        activeProvidersCount: this.fcssOnly(entry.activeProvidersCount),
+      };
+    });
+  }
+
   private async getPeriodStatistics({
     periodStart,
     periodEnd,
@@ -84,19 +122,29 @@ export class StorageProvidersController extends ControllerBase {
       periodEnd,
     );
 
-    const fcssOnly = (value: number | null): DashboardServiceValue => ({
-      total: value,
-      fcss: value,
-      fwss: null,
-    });
-
     return {
       periodStart: periodStart !== null ? periodStart.toJSDate() : null,
       periodEnd: periodEnd.toJSDate(),
-      totalProvidersCount: fcssOnly(fcss.totalProvidersCount),
-      activeProvidersCount: fcssOnly(fcss.activeProvidersCount),
-      earningsUSD: fcssOnly(fcss.earningsUSD),
-      averageSla: fcssOnly(null),
+      totalProvidersCount: this.fcssOnly(fcss.totalProvidersCount),
+      activeProvidersCount: this.fcssOnly(fcss.activeProvidersCount),
+      earningsUSD: this.fcssOnly(fcss.earningsUSD),
+      averageSla: this.fcssOnly(null),
+    };
+  }
+
+  private validateServiceImplemented(service: DashboardService) {
+    if (service === 'fwss') {
+      throw new NotImplementedException(
+        'Storage providers statistics for FWSS are not implemented yet',
+      );
+    }
+  }
+
+  private fcssOnly(value: number | null): DashboardServiceValue {
+    return {
+      total: value,
+      fcss: value,
+      fwss: null,
     };
   }
 }

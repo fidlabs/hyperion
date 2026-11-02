@@ -1,11 +1,43 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, IntersectionType } from '@nestjs/swagger';
+import { PoRepHistoryParameters } from 'src/service/po-rep/types.po-rep';
 import {
   DashboardPeriod,
   dashboardPeriods,
   DashboardService,
   dashboardServices,
   DashboardServiceValue,
+  DashboardStatisticsRequest,
 } from '../base/types.controller-base';
+
+export class StorageProvidersHistoryRequest extends IntersectionType(
+  DashboardStatisticsRequest,
+  PoRepHistoryParameters,
+) {}
+
+export class StorageProvidersHistoryEntry {
+  @ApiProperty({
+    description: 'Window start ISO date (UTC)',
+  })
+  date: string;
+
+  @ApiProperty({
+    description: 'Count of providers registered in SP Registry in the window',
+  })
+  newProvidersCount: DashboardServiceValue;
+
+  @ApiProperty({
+    description:
+      'Count of providers registered in SP Registry up to the window end',
+  })
+  totalProvidersCount: DashboardServiceValue;
+
+  @ApiProperty({
+    description: `Count of providers with at least one deal active in the
+      window. Deal is active from reaching ACTIVE state until reaching
+      FINALIZED, EXPIRED or EARLY_TERMINATED state.`,
+  })
+  activeProvidersCount: DashboardServiceValue;
+}
 
 export class StorageProvidersPeriodStatistics {
   @ApiProperty({
