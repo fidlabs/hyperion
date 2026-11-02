@@ -1,6 +1,6 @@
 import { F0Id } from 'src/utils/utils';
 import { F0IdInput } from 'src/utils/validators';
-import { PoRepDealState } from '../auto-generated/enums';
+import { PoRepDealState, PoRepDealType } from '../auto-generated/enums';
 import { QueryBuilder } from '../query-builder';
 
 export interface PoRepProviderStorageStatisticsQueryParameters {
@@ -19,6 +19,8 @@ export function createPoRepProviderStorageStatisticsQuery(
     .select((eb) => [
       'd.providerId',
       'd.dealId',
+      'd.state',
+      'd.dealType',
       'totalDealSize',
       eb
         .and([
@@ -42,6 +44,30 @@ export function createPoRepProviderStorageStatisticsQuery(
           eb.val(0),
         )
         .as('onbardedDealsCount'),
+      eb.fn
+        .coalesce(
+          eb.fn
+            .count('d.dealId')
+            .filterWhere('d.state', '=', PoRepDealState.EARLY_TERMINATED),
+          eb.val(0),
+        )
+        .as('failedDealsCount'),
+      eb.fn
+        .coalesce(
+          eb.fn
+            .count('d.dealId')
+            .filterWhere('d.state', '=', PoRepDealState.REJECTED),
+          eb.val(0),
+        )
+        .as('rejectedDealsCount'),
+      eb.fn
+        .coalesce(
+          eb.fn
+            .count('d.dealId')
+            .filterWhere('d.state', '=', PoRepDealState.EXPIRED),
+          eb.val(0),
+        )
+        .as('expiredDealsCount'),
       'availableBytes',
       'pendingBytes',
       'committedBytes',
@@ -51,6 +77,24 @@ export function createPoRepProviderStorageStatisticsQuery(
           eb.val(0),
         )
         .as('onboardedBytes'),
+      eb.fn
+        .coalesce(
+          eb.fn
+            .sum('d.totalDealSize')
+            .filterWhere('d.onboarded', '=', true)
+            .filterWhere('d.dealType', '=', PoRepDealType.PUBLIC),
+          eb.val(0),
+        )
+        .as('onboardedPublicBytes'),
+      eb.fn
+        .coalesce(
+          eb.fn
+            .sum('d.totalDealSize')
+            .filterWhere('d.onboarded', '=', true)
+            .filterWhere('d.dealType', '=', PoRepDealType.PRIVATE),
+          eb.val(0),
+        )
+        .as('onboardedPrivateBytes'),
     ])
     .groupBy('p.providerId')
     .where('p.providerId', '=', providerIdString);

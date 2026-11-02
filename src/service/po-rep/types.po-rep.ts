@@ -512,6 +512,23 @@ export class PoRepProviderStorageStatistics {
   onboardedDealsCount: number;
 
   @ApiProperty({
+    description: `Number of failed deals, eg. deals in
+      "${PoRepDealState.EARLY_TERMINATED}" state, including deals terminated
+      for missed proofs.`,
+  })
+  failedDealsCount: number;
+
+  @ApiProperty({
+    description: `Number of deals in "${PoRepDealState.REJECTED}" state.`,
+  })
+  rejectedDealsCount: number;
+
+  @ApiProperty({
+    description: `Number of deals in "${PoRepDealState.EXPIRED}" state.`,
+  })
+  expiredDealsCount: number;
+
+  @ApiProperty({
     description: `Total space available in bytes, declared by storage provider.`,
   })
   totalAvailableBytes: bigint;
@@ -531,6 +548,18 @@ export class PoRepProviderStorageStatistics {
       "${PoRepDealState.ACTIVE}") state and with active payment rail)`,
   })
   onboardedBytes: bigint;
+
+  @ApiProperty({
+    description: `Space in bytes in active deals of
+      "${PoRepDealType.PUBLIC}" type.`,
+  })
+  onboardedPublicBytes: bigint;
+
+  @ApiProperty({
+    description: `Space in bytes in active deals of
+      "${PoRepDealType.PRIVATE}" type.`,
+  })
+  onboardedPrivateBytes: bigint;
 }
 
 export class PoRepProviderEconomicsStatistics {
@@ -556,9 +585,36 @@ export class PoRepProviderEconomicsStatistics {
   predictedRevenueUSD: number;
 
   @ApiProperty({
-    description: 'Total net amount settled for all deals in USD',
+    description: `Total amount settled for all deals in USD. Includes network
+      fees and operator commission.`,
   })
   totalSettledUSD: number;
+
+  @ApiProperty({
+    description: `Total net amount settled to provider for all deals in USD,
+      eg. revenue to date.`,
+  })
+  totalNetSettledUSD: number;
+
+  @ApiProperty({
+    description: 'Net amount settled to provider in the last 90 days, in USD',
+  })
+  last90DaysNetSettledUSD: number;
+
+  @ApiProperty({
+    description:
+      'Net amount settled to provider in the 90 days before the last 90 days, in USD',
+  })
+  previous90DaysNetSettledUSD: number;
+
+  @ApiProperty({
+    description: `90-day revenue growth, eg. relative change of net amount
+      settled in the last 90 days against the 90 days before, represented as a
+      floating point number, eg. value of 0.1 means 10% growth. Null if nothing
+      was settled in the previous period.`,
+    nullable: true,
+  })
+  revenueGrowth90Days: number | null;
 
   @ApiProperty({
     description:
