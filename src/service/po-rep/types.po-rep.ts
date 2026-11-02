@@ -533,6 +533,13 @@ export interface PoRepProvidersStatistics {
   earningsUSD: number;
 }
 
+export interface PoRepProvidersHistoryEntry {
+  date: string;
+  newProvidersCount: number;
+  totalProvidersCount: number;
+  activeProvidersCount: number;
+}
+
 export class PoRepProviderEconomicsStatistics {
   @ApiProperty({
     description:
