@@ -562,32 +562,6 @@ export class PoRepProviderEconomicsStatistics {
   totalSettledUSD: number;
 
   @ApiProperty({
-    description: `Total net amount settled to provider for all deals in USD,
-      eg. revenue to date.`,
-  })
-  totalNetSettledUSD: number;
-
-  @ApiProperty({
-    description: 'Net amount settled to provider in the last 90 days, in USD',
-  })
-  last90DaysNetSettledUSD: number;
-
-  @ApiProperty({
-    description:
-      'Net amount settled to provider in the 90 days before the last 90 days, in USD',
-  })
-  previous90DaysNetSettledUSD: number;
-
-  @ApiProperty({
-    description: `90-day revenue growth, eg. relative change of net amount
-      settled in the last 90 days against the 90 days before, represented as a
-      floating point number, eg. value of 0.1 means 10% growth. Null if nothing
-      was settled in the previous period.`,
-    nullable: true,
-  })
-  revenueGrowth90Days: number | null;
-
-  @ApiProperty({
     description:
       'Date of last settlement on any deal. Null if no settlements were made.',
     nullable: true,
