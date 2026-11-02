@@ -43,6 +43,11 @@ export const PO_REP_CONFIG_SCHEMA = z.object({
   PO_REP_MARKET_CONTRACT_ADDRESS: evmAddress,
   SP_REGISTRY_CONTRACT_ADDRESS: evmAddress,
   FILECOIN_PAY_CONTRACT_ADDRESS: evmAddress,
+  FINALIZED_HEIGHT_MAX_DIFFERENCE: z.coerce
+    .bigint()
+    .min(0n)
+    .max(900n)
+    .nullish(),
 });
 
 export const DEAL_MANIFEST_PIECE_SCHEMA = z.object({

@@ -9,11 +9,37 @@ import {
 
 type SupportedChain = (typeof PO_REP_SUPPORTED_CHAINS)[number];
 
+export type FilecoinCid = {
+  '/': string;
+};
+
+export type FilecoinFinalizedTipset = {
+  Cids: FilecoinCid[];
+  Blocks: unknown[];
+  Height: number;
+};
+
+export type FilecoinRpcSchema = [
+  {
+    Method: 'Filecoin.ChainGetFinalizedTipSet';
+    Parameters: [];
+    ReturnType: FilecoinFinalizedTipset;
+  },
+];
+
+export type FilecoinActions = {
+  filecoin: {
+    chainGetFinalizedTipSet: () => Promise<FilecoinFinalizedTipset>;
+  };
+};
+
 export type PoRepPublicClient = PublicClient<
   HttpTransport,
   SupportedChain,
-  undefined
->;
+  undefined,
+  FilecoinRpcSchema
+> &
+  FilecoinActions;
 
 export type PoRepConfig = z.infer<typeof PO_REP_CONFIG_SCHEMA>;
 

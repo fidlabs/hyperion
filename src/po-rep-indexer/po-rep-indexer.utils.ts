@@ -1,10 +1,14 @@
-import { createPublicClient, extractChain, http } from 'viem';
+import { createPublicClient, extractChain, http, rpcSchema } from 'viem';
 import z from 'zod';
 import {
   PO_REP_CONFIG_SCHEMA,
   PO_REP_SUPPORTED_CHAINS,
 } from './po-rep-indexer.constants';
-import { PoRepConfig, PoRepPublicClient } from './po-rep-indexer.types';
+import {
+  FilecoinRpcSchema,
+  PoRepConfig,
+  PoRepPublicClient,
+} from './po-rep-indexer.types';
 
 type SupportedChainId = (typeof PO_REP_SUPPORTED_CHAINS)[number]['id'];
 
@@ -13,6 +17,8 @@ export interface GetClientForChainOptions {
   rpcUrl?: string | null;
   authToken?: string | null;
 }
+
+const filecoinRpcSchema = rpcSchema<FilecoinRpcSchema>();
 
 function assertIsSupportedChainId(
   chainId: number,
@@ -34,21 +40,34 @@ export function createClientForChainOrThrow({
   assertIsSupportedChainId(chainId);
 
   const chain = extractChain({ chains: PO_REP_SUPPORTED_CHAINS, id: chainId });
+  const transport = http(rpcUrl ?? undefined, {
+    fetchOptions:
+      typeof authToken === 'string' && authToken !== ''
+        ? {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          }
+        : undefined,
+    timeout: 60_000,
+  });
 
-  return createPublicClient({
+  const client = createPublicClient({
     chain: chain,
-    transport: http(rpcUrl ?? undefined, {
-      fetchOptions:
-        typeof authToken === 'string' && authToken !== ''
-          ? {
-              headers: {
-                Authorization: `Bearer ${authToken}`,
-              },
-            }
-          : undefined,
-      timeout: 60_000,
-    }),
-  }) as unknown as PoRepPublicClient;
+    transport,
+    rpcSchema: filecoinRpcSchema,
+  }).extend((client) => ({
+    filecoin: {
+      chainGetFinalizedTipSet() {
+        return client.request({
+          method: 'Filecoin.ChainGetFinalizedTipSet',
+          params: [],
+        });
+      },
+    },
+  })) as unknown as PoRepPublicClient;
+
+  return client;
 }
 
 export function validatePoRepConfig(
