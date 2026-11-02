@@ -5,6 +5,7 @@ import {
   getSchemaPath,
   IntersectionType,
 } from '@nestjs/swagger';
+import { IsIn, IsOptional } from 'class-validator';
 import { BigIntString } from 'src/utils/utils';
 
 export class PaginationInfoRequest {
@@ -71,6 +72,64 @@ export class PaginationSortingInfoRequest extends IntersectionType(
   PaginationInfoRequest,
   SortingInfoRequest,
 ) {}
+
+// Dashboards
+export const dashboardPeriods = ['30d', '90d', '1y', 'all'] as const;
+
+export type DashboardPeriod = (typeof dashboardPeriods)[number];
+
+export const dashboardServices = ['all', 'fcss', 'fwss'] as const;
+
+export type DashboardService = (typeof dashboardServices)[number];
+
+export class DashboardStatisticsRequest {
+  @ApiPropertyOptional({
+    description: `Period of the statistics, "30d" by default. Values of the
+      previous period of the same length are returned for comparison, except
+      for "all".`,
+    enum: dashboardPeriods,
+    enumName: 'DashboardPeriod',
+    default: '30d',
+  })
+  @IsOptional()
+  @IsIn(dashboardPeriods)
+  period?: DashboardPeriod;
+
+  @ApiPropertyOptional({
+    description: 'Service of the statistics, "all" by default',
+    enum: dashboardServices,
+    enumName: 'DashboardService',
+    default: 'all',
+  })
+  @IsOptional()
+  @IsIn(dashboardServices)
+  service?: DashboardService;
+}
+
+export class DashboardServiceValue {
+  @ApiProperty({
+    description: `Value for all requested services. Services that are not
+      implemented yet are not included.`,
+    type: Number,
+    nullable: true,
+  })
+  total: number | null;
+
+  @ApiProperty({
+    description: 'Value for FCSS, null if not requested or unavailable',
+    type: Number,
+    nullable: true,
+  })
+  fcss: number | null;
+
+  @ApiProperty({
+    description:
+      'Value for FWSS, null if not requested, unavailable or not implemented yet',
+    type: Number,
+    nullable: true,
+  })
+  fwss: number | null;
+}
 
 // Dashboard Statistics
 export type DashboardStatisticChangeInterval =

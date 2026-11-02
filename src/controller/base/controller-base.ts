@@ -1,5 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
+import { DateTime, DurationLike } from 'luxon';
 import {
+  DashboardPeriod,
   PaginationInfo,
   PaginationInfoRequest,
   PaginationInfoResponse,
@@ -8,7 +10,44 @@ import {
 import { DatabasePaginationQuery } from 'src/utils/utils';
 import { Prisma } from 'src/generated/prisma/client';
 
+const dashboardPeriodDurations: Record<DashboardPeriod, DurationLike | null> = {
+  '30d': { days: 30 },
+  '90d': { days: 90 },
+  '1y': { years: 1 },
+  all: null,
+};
+
+export interface DashboardPeriodBoundaries {
+  periodStart: DateTime | null;
+  periodEnd: DateTime;
+}
+
 export class ControllerBase {
+  public getDashboardPeriods(period: DashboardPeriod): {
+    current: DashboardPeriodBoundaries;
+    previous: DashboardPeriodBoundaries | null;
+  } {
+    const periodEnd = DateTime.utc();
+    const periodDuration = dashboardPeriodDurations[period];
+
+    if (periodDuration === null) {
+      return {
+        current: { periodStart: null, periodEnd: periodEnd },
+        previous: null,
+      };
+    }
+
+    const periodStart = periodEnd.minus(periodDuration);
+
+    return {
+      current: { periodStart: periodStart, periodEnd: periodEnd },
+      previous: {
+        periodStart: periodStart.minus(periodDuration),
+        periodEnd: periodStart,
+      },
+    };
+  }
+
   public withPaginationInfo<T>(
     data: T,
     _paginationInfo?: PaginationInfoRequest,

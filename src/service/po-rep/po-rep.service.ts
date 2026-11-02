@@ -10,6 +10,10 @@ import { createPoRepDealsQuery } from 'src/db/queries/po-rep-deals.query';
 import { createPoRepOnboardedDataHistoryQuery } from 'src/db/queries/po-rep-onboarded-data-history.query';
 import { createPoRepProviderEconomicsStatisticsQuery } from 'src/db/queries/po-rep-provider-economics-statistics.query';
 import { createPoRepProviderStorageStatisticsQuery } from 'src/db/queries/po-rep-provider-storage-statistics.query';
+import {
+  createPoRepActiveProvidersCountQuery,
+  createPoRepProvidersEarningsQuery,
+} from 'src/db/queries/po-rep-providers-statistics.query';
 import { PoRepPublicClient, RECENT_NODE_CLIENT } from 'src/po-rep-indexer';
 import {
   dateToFilecoinBlockHeight,
@@ -34,6 +38,7 @@ import {
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderEconomicsStatistics,
+  PoRepProvidersStatistics,
   PoRepProviderStorageStatistics,
 } from './types.po-rep';
 import { ERC20TokenInfoService } from '../erc20-token-info/erc20-token-info.service';
@@ -312,6 +317,63 @@ export class PoRepService {
         lastSettlementAt: null,
       },
     );
+  }
+
+  public async getProvidersStatistics(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<PoRepProvidersStatistics> {
+    const periodStartEpoch =
+      periodStart !== null
+        ? dateToFilecoinBlockHeight(periodStart.toJSDate(), {
+            testnet: this.isTestnet(),
+          })
+        : null;
+    const periodEndEpoch = dateToFilecoinBlockHeight(periodEnd.toJSDate(), {
+      testnet: this.isTestnet(),
+    });
+
+    const [totalProvidersCount, activeProviders, earnings] = await Promise.all([
+      this.prismaService.po_rep_storage_provider.count({
+        where: {
+          registeredAtBlock: {
+            lte: periodEndEpoch,
+          },
+        },
+      }),
+      createPoRepActiveProvidersCountQuery(this.queryBuilder, {
+        periodEndEpoch: periodEndEpoch,
+      }).executeTakeFirstOrThrow(),
+      createPoRepProvidersEarningsQuery(this.queryBuilder, {
+        periodStartEpoch: periodStartEpoch,
+        periodEndEpoch: periodEndEpoch,
+      }).execute(),
+    ]);
+
+    const uniqueTokens = uniq(earnings.map((item) => item.token_address));
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    const earningsUSD = earnings.reduce((totalUSD, item) => {
+      const tokenExponent =
+        10n ** BigInt(tokensDetails.get(item.token_address).tokenDecimals);
+
+      return totalUSD.add(
+        Decimal(item.net_amount.toString())
+          .div(tokenExponent.toString())
+          .mul(tokensExchangeRatesUSD.get(item.token_address)),
+      );
+    }, Decimal(0));
+
+    return {
+      totalProvidersCount: totalProvidersCount,
+      activeProvidersCount: stringToNumber(
+        activeProviders.active_providers_count.toString(),
+      ),
+      earningsUSD: earningsUSD.toDecimalPlaces(2).toNumber(),
+    };
   }
 
   public async getDealsPaymentsSummaryHistory({
