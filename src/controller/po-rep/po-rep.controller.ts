@@ -107,8 +107,7 @@ export class PoRepController extends ControllerBase {
     description: 'Query parameters validation error',
   })
   public getClients(
-    @Query(new ValidationPipe({ transform: true }))
-    query: PoRepClientsListParameters,
+    @Query() query: PoRepClientsListParameters,
   ): Promise<PoRepClientsList> {
     return this.poRepService.getClients(query);
   }
@@ -128,7 +127,7 @@ export class PoRepController extends ControllerBase {
     description: 'Client has no PoRep market deals',
   })
   public async getClient(
-    @Param(new ValidationPipe()) { clientAddress }: PoRepClientParameters,
+    @Param() { clientAddress }: PoRepClientParameters,
   ): Promise<PoRepClient> {
     const client = await this.poRepService.getClient(clientAddress);
 
