@@ -244,15 +244,10 @@ export class PoRepService {
     return {
       totalDealsCount: stringToNumber(result.totalDealsCount.toString()),
       onboardedDealsCount: stringToNumber(result.onbardedDealsCount.toString()),
-      failedDealsCount: stringToNumber(result.failedDealsCount.toString()),
-      rejectedDealsCount: stringToNumber(result.rejectedDealsCount.toString()),
-      expiredDealsCount: stringToNumber(result.expiredDealsCount.toString()),
       totalAvailableBytes: BigInt(result.availableBytes),
       pendingBytes: BigInt(result.pendingBytes),
       committedBytes: BigInt(result.committedBytes),
       onboardedBytes: BigInt(result.onboardedBytes),
-      onboardedPublicBytes: BigInt(result.onboardedPublicBytes),
-      onboardedPrivateBytes: BigInt(result.onboardedPrivateBytes),
     };
   }
 

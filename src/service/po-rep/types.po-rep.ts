@@ -512,23 +512,6 @@ export class PoRepProviderStorageStatistics {
   onboardedDealsCount: number;
 
   @ApiProperty({
-    description: `Number of failed deals, eg. deals in
-      "${PoRepDealState.EARLY_TERMINATED}" state, including deals terminated
-      for missed proofs.`,
-  })
-  failedDealsCount: number;
-
-  @ApiProperty({
-    description: `Number of deals in "${PoRepDealState.REJECTED}" state.`,
-  })
-  rejectedDealsCount: number;
-
-  @ApiProperty({
-    description: `Number of deals in "${PoRepDealState.EXPIRED}" state.`,
-  })
-  expiredDealsCount: number;
-
-  @ApiProperty({
     description: `Total space available in bytes, declared by storage provider.`,
   })
   totalAvailableBytes: bigint;
@@ -548,18 +531,6 @@ export class PoRepProviderStorageStatistics {
       "${PoRepDealState.ACTIVE}") state and with active payment rail)`,
   })
   onboardedBytes: bigint;
-
-  @ApiProperty({
-    description: `Space in bytes in active deals of
-      "${PoRepDealType.PUBLIC}" type.`,
-  })
-  onboardedPublicBytes: bigint;
-
-  @ApiProperty({
-    description: `Space in bytes in active deals of
-      "${PoRepDealType.PRIVATE}" type.`,
-  })
-  onboardedPrivateBytes: bigint;
 }
 
 export class PoRepProviderEconomicsStatistics {
