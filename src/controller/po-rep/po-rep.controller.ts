@@ -18,6 +18,7 @@ import {
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
   PoRepClient,
+  PoRepClientDealsHistoryEntry,
   PoRepClientParameters,
   PoRepDealsList,
   PoRepDealsListParameters,
@@ -25,6 +26,7 @@ import {
   PoRepDealsPaymentsHistoryParameters,
   PoRepDealsValueHistoryEntry,
   PoRepDealsValueHistoryParameters,
+  PoRepHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
 } from 'src/service/po-rep/types.po-rep';
@@ -118,5 +120,22 @@ export class PoRepController extends ControllerBase {
     }
 
     return client;
+  }
+
+  @Get('/clients/:clientAddress/deals-history')
+  @ApiOperation({
+    summary: 'Get the history of deals proposed by PoRep market client',
+  })
+  @ApiOkResponse({
+    type: [PoRepClientDealsHistoryEntry],
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid client address or query parameters',
+  })
+  public getClientDealsHistory(
+    @Param() { clientAddress }: PoRepClientParameters,
+    @Query() { windowSize = 'day' }: PoRepHistoryParameters,
+  ): Promise<PoRepClientDealsHistoryEntry[]> {
+    return this.poRepService.getClientDealsHistory(clientAddress, windowSize);
   }
 }

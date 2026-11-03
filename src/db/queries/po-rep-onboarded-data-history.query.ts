@@ -18,7 +18,7 @@ function mapF0IdLike(input: F0IdLike): string {
   return F0Id.from(input).toBigInt().toString();
 }
 
-function truncateToWindowSize(
+export function truncateToWindowSize(
   expression: Expression<Date>,
   windowSize: CreatePoRepOnboardedDataHistoryQueryParamaters['windowSize'],
 ): AliasableExpression<Date> {

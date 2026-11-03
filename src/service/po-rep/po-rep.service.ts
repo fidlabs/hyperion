@@ -5,6 +5,7 @@ import { Prisma as PrismaRuntime } from '../../generated/prisma/client';
 import { InjectQueryBuilder, QueryBuilder } from 'src/db';
 import { PrismaService } from 'src/db/prisma.service';
 import {
+  createPoRepClientDealsHistoryQuery,
   createPoRepClientSpendQuery,
   createPoRepClientStatisticsQuery,
 } from 'src/db/queries/po-rep-clients.query';
@@ -30,6 +31,7 @@ import { PoRepPriceOracleService } from '../po-rep-price-oracle/po-rep-price-ora
 import {
   DealRailState,
   PoRepClient,
+  PoRepClientDealsHistoryEntry,
   PoRepDeal,
   PoRepDealsList,
   PoRepDealsListParameters,
@@ -37,6 +39,7 @@ import {
   PoRepDealsPaymentsHistoryParameters,
   PoRepDealsValueHistoryEntry,
   PoRepDealsValueHistoryParameters,
+  PoRepHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderEconomicsStatistics,
@@ -469,10 +472,42 @@ export class PoRepService {
 
     return new PoRepClient({
       clientAddress: statistics.client_address,
+      servicesUsed: {
+        fcss: true,
+        fwss: null,
+      },
       dealsCount: stringToNumber(statistics.deals_count.toString()),
       firstDealAt: this.epochToDate(BigInt(statistics.first_deal_epoch)),
       averageSla: null,
       spendLast30DaysUSD: spendLast30DaysUSD,
+    });
+  }
+
+  public async getClientDealsHistory(
+    clientAddress: string,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepClientDealsHistoryEntry[]> {
+    const results = await createPoRepClientDealsHistoryQuery(
+      this.queryBuilder,
+      {
+        clientAddress: getAddress(clientAddress),
+        genesisTimestamp: getFilecoinGenesisTimestamp({
+          testnet: this.isTestnet(),
+        }),
+        windowSize: windowSize,
+      },
+    ).execute();
+
+    return results.map((result) => {
+      return {
+        date: DateTime.fromJSDate(result.window_start, {
+          zone: 'UTC',
+        }).toISODate(),
+        dealsCount: stringToNumber(result.window_total.toString()),
+        cumulativeDealsCount: stringToNumber(
+          result.cumulative_total.toString(),
+        ),
+      };
     });
   }
 

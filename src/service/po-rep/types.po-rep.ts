@@ -616,6 +616,39 @@ export class PoRepClientParameters {
   clientAddress: string;
 }
 
+export class PoRepClientDealsHistoryEntry {
+  @ApiProperty({
+    description: 'Window start ISO date (UTC)',
+  })
+  date: string;
+
+  @ApiProperty({
+    description: 'Count of deals proposed by the client in the window',
+  })
+  dealsCount: number;
+
+  @ApiProperty({
+    description:
+      'Cumulative count of deals proposed by the client up to the window end',
+  })
+  cumulativeDealsCount: number;
+}
+
+export class PoRepClientServicesUsed {
+  @ApiProperty({
+    description: 'Flag telling if client uses FCSS',
+  })
+  fcss: boolean;
+
+  @ApiProperty({
+    description:
+      'Flag telling if client uses FWSS. Null until FWSS data is available.',
+    type: Boolean,
+    nullable: true,
+  })
+  fwss: boolean | null;
+}
+
 export class PoRepClient {
   @ApiProperty({
     description: `EVM address of the client. Client is a single payer wallet,
@@ -623,6 +656,11 @@ export class PoRepClient {
       the payer.`,
   })
   clientAddress: string;
+
+  @ApiProperty({
+    description: 'Services used by the client',
+  })
+  servicesUsed: PoRepClientServicesUsed;
 
   @ApiProperty({
     description: 'Total count of deals made by the client, in any state',
