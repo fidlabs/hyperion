@@ -19,8 +19,6 @@ import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
   PoRepClient,
   PoRepClientParameters,
-  PoRepClientsList,
-  PoRepClientsListParameters,
   PoRepDealsList,
   PoRepDealsListParameters,
   PoRepDealsPaymentsHistoryEntry,
@@ -143,24 +141,6 @@ export class PoRepController extends ControllerBase {
     }
 
     return stats;
-  }
-
-  @Get('/clients')
-  @UseInterceptors(ClassSerializerInterceptor)
-  @ApiOperation({
-    summary:
-      'Get list of PoRep market clients (payer wallets) with their aggregates',
-  })
-  @ApiOkResponse({
-    type: PoRepClientsList,
-  })
-  @ApiBadRequestResponse({
-    description: 'Query parameters validation error',
-  })
-  public getClients(
-    @Query() query: PoRepClientsListParameters,
-  ): Promise<PoRepClientsList> {
-    return this.poRepService.getClients(query);
   }
 
   @Get('/clients/:clientAddress')
