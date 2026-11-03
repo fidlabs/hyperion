@@ -4,6 +4,11 @@ import { DateTime } from 'luxon';
 import { Prisma as PrismaRuntime } from '../../generated/prisma/client';
 import { InjectQueryBuilder, QueryBuilder } from 'src/db';
 import { PrismaService } from 'src/db/prisma.service';
+import {
+  createPoRepClientDealsHistoryQuery,
+  createPoRepClientSpendQuery,
+  createPoRepClientStatisticsQuery,
+} from 'src/db/queries/po-rep-clients.query';
 import { createPoRepDealsPaymentsHistoryQuery } from 'src/db/queries/po-rep-deals-payments-history.query';
 import { createPoRepDealsValueHistoryQuery } from 'src/db/queries/po-rep-deals-value-history.query';
 import { createPoRepDealsQuery } from 'src/db/queries/po-rep-deals.query';
@@ -20,10 +25,13 @@ import {
   stringToNumber,
 } from 'src/utils/utils';
 import { F0IdInput } from 'src/utils/validators';
+import { getAddress } from 'viem';
 import { filecoinCalibration } from 'viem/chains';
 import { PoRepPriceOracleService } from '../po-rep-price-oracle/po-rep-price-oracle.service';
 import {
   DealRailState,
+  PoRepClient,
+  PoRepClientDealsHistoryEntry,
   PoRepDeal,
   PoRepDealsList,
   PoRepDealsListParameters,
@@ -31,6 +39,7 @@ import {
   PoRepDealsPaymentsHistoryParameters,
   PoRepDealsValueHistoryEntry,
   PoRepDealsValueHistoryParameters,
+  PoRepHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderEconomicsStatistics,
@@ -59,6 +68,7 @@ export class PoRepService {
 
   public async getDeals({
     providerId = null,
+    clientAddress = null,
     railState = null,
     pieceCid = null,
     activeOnly,
@@ -69,6 +79,8 @@ export class PoRepService {
   }: PoRepDealsListParameters): Promise<PoRepDealsList> {
     let baseQuery = createPoRepDealsQuery(this.queryBuilder, {
       providersIds: providerId,
+      clientsAddresses:
+        clientAddress !== null ? getAddress(clientAddress) : null,
       railStates: railState,
       activeOnly: Boolean(stringToBool(activeOnly)),
     });
@@ -415,6 +427,88 @@ export class PoRepService {
 
       return [...result, nextEntry];
     }, []);
+  }
+
+  public async getClient(clientAddress: string): Promise<PoRepClient | null> {
+    const address = getAddress(clientAddress);
+    const fromEpoch = dateToFilecoinBlockHeight(
+      DateTime.utc().minus({ days: 30 }).toJSDate(),
+      { testnet: this.isTestnet() },
+    );
+
+    const [statistics, spend] = await Promise.all([
+      createPoRepClientStatisticsQuery(this.queryBuilder, {
+        clientAddress: address,
+      }).executeTakeFirst(),
+      createPoRepClientSpendQuery(this.queryBuilder, {
+        clientAddress: address,
+        fromEpoch: fromEpoch,
+      }).execute(),
+    ]);
+
+    if (!statistics) {
+      return null;
+    }
+
+    const uniqueTokens = uniq(spend.map((item) => item.token_address));
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    const spendLast30DaysUSD = spend
+      .reduce((totalUSD, item) => {
+        const tokenDetails = tokensDetails.get(item.token_address);
+        const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
+
+        return totalUSD.add(
+          Decimal(item.total_amount_settled.toString())
+            .div(tokenExponent.toString())
+            .mul(tokensExchangeRatesUSD.get(item.token_address)),
+        );
+      }, Decimal(0))
+      .toDecimalPlaces(2)
+      .toNumber();
+
+    return new PoRepClient({
+      clientAddress: statistics.client_address,
+      servicesUsed: {
+        fcss: true,
+        fwss: null,
+      },
+      dealsCount: stringToNumber(statistics.deals_count.toString()),
+      firstDealAt: this.epochToDate(BigInt(statistics.first_deal_epoch)),
+      averageSla: null,
+      spendLast30DaysUSD: spendLast30DaysUSD,
+    });
+  }
+
+  public async getClientDealsHistory(
+    clientAddress: string,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepClientDealsHistoryEntry[]> {
+    const results = await createPoRepClientDealsHistoryQuery(
+      this.queryBuilder,
+      {
+        clientAddress: getAddress(clientAddress),
+        genesisTimestamp: getFilecoinGenesisTimestamp({
+          testnet: this.isTestnet(),
+        }),
+        windowSize: windowSize,
+      },
+    ).execute();
+
+    return results.map((result) => {
+      return {
+        date: DateTime.fromJSDate(result.window_start, {
+          zone: 'UTC',
+        }).toISODate(),
+        dealsCount: stringToNumber(result.window_total.toString()),
+        cumulativeDealsCount: stringToNumber(
+          result.cumulative_total.toString(),
+        ),
+      };
+    });
   }
 
   public async getDealsDoneCountUpToDate(upToDate?: Date): Promise<number> {

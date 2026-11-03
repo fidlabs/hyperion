@@ -3,6 +3,7 @@ import { Transform, TransformFnParams } from 'class-transformer';
 import {
   IsBooleanString,
   IsEnum,
+  IsEthereumAddress,
   IsIn,
   IsInt,
   IsOptional,
@@ -115,6 +116,16 @@ export class PoRepDealsListParameters extends PaginationParameters {
   @IsOptional()
   @IsF0IdInput()
   providerId?: F0IdInput;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional filter by client (payer wallet) EVM address, case insensitive',
+    type: 'string',
+    required: false,
+  })
+  @IsOptional()
+  @IsEthereumAddress()
+  clientAddress?: string;
 
   @ApiPropertyOptional({
     description:
@@ -593,4 +604,90 @@ export class PoRepDealsValueHistoryParameters extends PoRepHistoryParameters {
   @IsF0IdInput()
   @IsOptional()
   providerId?: F0IdInput;
+}
+
+// Clients
+export class PoRepClientParameters {
+  @ApiProperty({
+    description: 'Client (payer wallet) EVM address, case insensitive',
+    type: 'string',
+  })
+  @IsEthereumAddress()
+  clientAddress: string;
+}
+
+export class PoRepClientDealsHistoryEntry {
+  @ApiProperty({
+    description: 'Window start ISO date (UTC)',
+  })
+  date: string;
+
+  @ApiProperty({
+    description: 'Count of deals proposed by the client in the window',
+  })
+  dealsCount: number;
+
+  @ApiProperty({
+    description:
+      'Cumulative count of deals proposed by the client up to the window end',
+  })
+  cumulativeDealsCount: number;
+}
+
+export class PoRepClientServicesUsed {
+  @ApiProperty({
+    description: 'Flag telling if client uses FCSS',
+  })
+  fcss: boolean;
+
+  @ApiProperty({
+    description:
+      'Flag telling if client uses FWSS. Null until FWSS data is available.',
+    type: Boolean,
+    nullable: true,
+  })
+  fwss: boolean | null;
+}
+
+export class PoRepClient {
+  @ApiProperty({
+    description: `EVM address of the client. Client is a single payer wallet,
+      in PoRep market payment rails are always created with deal client as
+      the payer.`,
+  })
+  clientAddress: string;
+
+  @ApiProperty({
+    description: 'Services used by the client',
+  })
+  servicesUsed: PoRepClientServicesUsed;
+
+  @ApiProperty({
+    description: 'Total count of deals made by the client, in any state',
+  })
+  dealsCount: number;
+
+  @ApiProperty({
+    description: `ISO Datetime of the first deal proposal made by client`,
+  })
+  @Transform(({ value }) => (value as Date).toISOString())
+  firstDealAt: Date;
+
+  @ApiProperty({
+    description: `Average SLA of client deals, eg. percentage of the contract
+      met. Null until SLA data is available.`,
+    type: Number,
+    nullable: true,
+  })
+  averageSla: number | null;
+
+  @ApiProperty({
+    description: `Amount settled on client's PoRep market rails in the last 30
+      days, in USD. Includes network fees and operator commission.`,
+  })
+  spendLast30DaysUSD: number;
+
+  constructor(client: PoRepClient) {
+    Object.assign(this, client);
+  }
 }

@@ -4,18 +4,29 @@ import {
   Controller,
   Get,
   Inject,
+  NotFoundException,
+  Param,
   Query,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+} from '@nestjs/swagger';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
+  PoRepClient,
+  PoRepClientDealsHistoryEntry,
+  PoRepClientParameters,
   PoRepDealsList,
   PoRepDealsListParameters,
   PoRepDealsPaymentsHistoryEntry,
   PoRepDealsPaymentsHistoryParameters,
   PoRepDealsValueHistoryEntry,
   PoRepDealsValueHistoryParameters,
+  PoRepHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
 } from 'src/service/po-rep/types.po-rep';
@@ -81,5 +92,50 @@ export class PoRepController extends ControllerBase {
     query: PoRepDealsPaymentsHistoryParameters,
   ): Promise<PoRepDealsPaymentsHistoryEntry[]> {
     return this.poRepService.getDealsPaymentsSummaryHistory(query);
+  }
+
+  @Get('/clients/:clientAddress')
+  @UseInterceptors(ClassSerializerInterceptor)
+  @ApiOperation({
+    summary: 'Get aggregates of a single PoRep market client (payer wallet)',
+  })
+  @ApiOkResponse({
+    type: PoRepClient,
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid client address',
+  })
+  @ApiNotFoundResponse({
+    description: 'Client has no PoRep market deals',
+  })
+  public async getClient(
+    @Param() { clientAddress }: PoRepClientParameters,
+  ): Promise<PoRepClient> {
+    const client = await this.poRepService.getClient(clientAddress);
+
+    if (!client) {
+      throw new NotFoundException(
+        `PoRep client with address "${clientAddress}" does not exist`,
+      );
+    }
+
+    return client;
+  }
+
+  @Get('/clients/:clientAddress/deals-history')
+  @ApiOperation({
+    summary: 'Get the history of deals proposed by PoRep market client',
+  })
+  @ApiOkResponse({
+    type: [PoRepClientDealsHistoryEntry],
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid client address or query parameters',
+  })
+  public getClientDealsHistory(
+    @Param() { clientAddress }: PoRepClientParameters,
+    @Query() { windowSize = 'day' }: PoRepHistoryParameters,
+  ): Promise<PoRepClientDealsHistoryEntry[]> {
+    return this.poRepService.getClientDealsHistory(clientAddress, windowSize);
   }
 }
