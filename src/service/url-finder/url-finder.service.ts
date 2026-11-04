@@ -1,7 +1,8 @@
 import { HttpService } from '@nestjs/axios';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Semaphore } from 'async-mutex';
 import { DateTime } from 'luxon';
 import { lastValueFrom } from 'rxjs';
 import { Cacheable } from 'src/utils/cacheable';
@@ -10,11 +11,13 @@ import {
   UrlFinderDealSliHistoryResponse,
 } from './types.url-finder';
 
-const maxHistoryRangeDays = 30;
+const historyRangeDays = 31;
+const historyRangesStart = DateTime.fromMillis(0, { zone: 'UTC' });
+const maxConcurrentRequests = 10;
 
 @Injectable()
 export class UrlFinderService {
-  private readonly logger = new Logger(UrlFinderService.name);
+  private readonly requestsSemaphore = new Semaphore(maxConcurrentRequests);
 
   constructor(
     private readonly httpService: HttpService,
@@ -28,15 +31,21 @@ export class UrlFinderService {
     to: DateTime,
   ): Promise<UrlFinderDealMeasurement[]> {
     const ranges: [string, string][] = [];
+    const today = DateTime.utc().startOf('day');
+    const firstRangeIndex = Math.floor(
+      from.diff(historyRangesStart, 'days').days / historyRangeDays,
+    );
 
     for (
-      let rangeStart = from.startOf('day');
+      let rangeStart = historyRangesStart.plus({
+        days: firstRangeIndex * historyRangeDays,
+      });
       rangeStart <= to;
-      rangeStart = rangeStart.plus({ days: maxHistoryRangeDays + 1 })
+      rangeStart = rangeStart.plus({ days: historyRangeDays })
     ) {
       const rangeEnd = DateTime.min(
-        rangeStart.plus({ days: maxHistoryRangeDays }),
-        to,
+        rangeStart.plus({ days: historyRangeDays - 1 }),
+        today,
       );
 
       ranges.push([rangeStart.toISODate(), rangeEnd.toISODate()]);
@@ -48,12 +57,8 @@ export class UrlFinderService {
       ),
     );
 
-    const measurements = history.every((item) => item !== null)
-      ? history.flat()
-      : [await this.getDealLatestMeasurement(dealId.toString())];
-
-    return measurements.filter((measurement) => {
-      if (!measurement?.tested_at) {
+    return history.flat().filter((measurement) => {
+      if (!measurement.tested_at) {
         return false;
       }
 
@@ -62,27 +67,29 @@ export class UrlFinderService {
     });
   }
 
-  @Cacheable({ ttl: 1000 * 60 * 60 }) // 1 hour
+  @Cacheable({ ttl: 1000 * 60 * 60 * 24 }) // 24 hours
   private async getDealSliHistory(
     dealId: string,
     from: string,
     to: string,
-  ): Promise<UrlFinderDealMeasurement[] | null> {
+  ): Promise<UrlFinderDealMeasurement[]> {
     const endpoint = `${this.configService.get<string>('URL_FINDER_API_URL')}/deals/${dealId}/history/sli`;
     const measurements: UrlFinderDealMeasurement[] = [];
     let cursor: string | null = null;
 
     try {
       do {
-        const { data } = await lastValueFrom(
-          this.httpService.get<UrlFinderDealSliHistoryResponse>(endpoint, {
-            params: {
-              from: from,
-              to: to,
-              limit: 500,
-              cursor: cursor ?? undefined,
-            },
-          }),
+        const { data } = await this.requestsSemaphore.runExclusive(() =>
+          lastValueFrom(
+            this.httpService.get<UrlFinderDealSliHistoryResponse>(endpoint, {
+              params: {
+                from: from,
+                to: to,
+                limit: 500,
+                cursor: cursor ?? undefined,
+              },
+            }),
+          ),
         );
 
         measurements.push(...Object.values(data.data).flat());
@@ -91,32 +98,14 @@ export class UrlFinderService {
 
       return measurements;
     } catch (err) {
-      this.logger.warn(
+      if (err.response?.status === HttpStatus.NOT_FOUND) {
+        return [];
+      }
+
+      throw new Error(
         `Error fetching URL Finder SLI history for deal ${dealId}: ${err.message}`,
+        { cause: err },
       );
-
-      return null;
-    }
-  }
-
-  @Cacheable({ ttl: 1000 * 60 * 60 }) // 1 hour
-  private async getDealLatestMeasurement(
-    dealId: string,
-  ): Promise<UrlFinderDealMeasurement | null> {
-    const endpoint = `${this.configService.get<string>('URL_FINDER_API_URL')}/deals/${dealId}/latest`;
-
-    try {
-      const { data } = await lastValueFrom(
-        this.httpService.get<UrlFinderDealMeasurement>(endpoint),
-      );
-
-      return data;
-    } catch (err) {
-      this.logger.warn(
-        `Error fetching URL Finder latest measurement for deal ${dealId}: ${err.message}`,
-      );
-
-      return null;
     }
   }
 }
