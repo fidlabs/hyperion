@@ -8,22 +8,28 @@ import { createPoRepDealsPaymentsHistoryQuery } from 'src/db/queries/po-rep-deal
 import { createPoRepDealsValueHistoryQuery } from 'src/db/queries/po-rep-deals-value-history.query';
 import { createPoRepDealsQuery } from 'src/db/queries/po-rep-deals.query';
 import { createPoRepOnboardedDataHistoryQuery } from 'src/db/queries/po-rep-onboarded-data-history.query';
+import { createPoRepOnboardedDealsQuery } from 'src/db/queries/po-rep-onboarded-deals.query';
 import { createPoRepProviderEconomicsStatisticsQuery } from 'src/db/queries/po-rep-provider-economics-statistics.query';
 import { createPoRepProviderStorageStatisticsQuery } from 'src/db/queries/po-rep-provider-storage-statistics.query';
 import { PoRepPublicClient, RECENT_NODE_CLIENT } from 'src/po-rep-indexer';
 import {
+  arrayAverage,
   dateToFilecoinBlockHeight,
   F0Id,
   filecoinBlockHeightToDate,
   getFilecoinGenesisTimestamp,
+  safeDiv,
   stringToBool,
   stringToNumber,
 } from 'src/utils/utils';
 import { F0IdInput } from 'src/utils/validators';
 import { filecoinCalibration } from 'viem/chains';
 import { PoRepPriceOracleService } from '../po-rep-price-oracle/po-rep-price-oracle.service';
+import { UrlFinderDealMeasurement } from '../url-finder/types.url-finder';
+import { UrlFinderService } from '../url-finder/url-finder.service';
 import {
   DealRailState,
+  PoRepComplianceState,
   PoRepDeal,
   PoRepDealsList,
   PoRepDealsListParameters,
@@ -33,8 +39,12 @@ import {
   PoRepDealsValueHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
+  PoRepProviderComplianceStatistics,
   PoRepProviderEconomicsStatistics,
   PoRepProviderStorageStatistics,
+  PoRepSLIComplianceHistoryEntry,
+  PoRepSLIComplianceHistoryParameters,
+  PoRepSLIComplianceHistoryStateValues,
 } from './types.po-rep';
 import { ERC20TokenInfoService } from '../erc20-token-info/erc20-token-info.service';
 
@@ -42,6 +52,23 @@ interface TokenDetails {
   tokenAddress: string;
   tokenDecimals: number;
   tokenSymbol: string;
+}
+
+interface OnboardedDeal {
+  dealId: bigint;
+  providerId: string;
+  dealSizeBytes: bigint;
+  requiredRetrievabilityBps: number;
+  requiredBandwidthMbps: number;
+  requiredLatencyMs: number;
+  onboardedAt: DateTime;
+  endedAt: DateTime | null;
+}
+
+interface DealCompliance {
+  deal: OnboardedDeal;
+  state: PoRepComplianceState;
+  sla: number | null;
 }
 
 const Decimal = PrismaRuntime.Decimal;
@@ -55,6 +82,7 @@ export class PoRepService {
     @Inject(RECENT_NODE_CLIENT)
     private readonly recentNodeClient: PoRepPublicClient,
     @InjectQueryBuilder() private readonly queryBuilder: QueryBuilder,
+    private readonly urlFinderService: UrlFinderService,
   ) {}
 
   public async getDeals({
@@ -417,6 +445,138 @@ export class PoRepService {
     }, []);
   }
 
+  public async getProviderComplianceStatistics(
+    providerId: F0IdInput,
+  ): Promise<PoRepProviderComplianceStatistics | null> {
+    const provider =
+      await this.prismaService.po_rep_storage_provider.findUnique({
+        where: {
+          providerId: F0Id.from(providerId).toBigInt(),
+        },
+      });
+
+    if (!provider) {
+      return null;
+    }
+
+    const to = DateTime.utc();
+    const from = to.minus({ days: 30 });
+    const [totalDealsCount, deals] = await Promise.all([
+      this.prismaService.po_rep_deal.count({
+        where: {
+          providerId: provider.providerId,
+        },
+      }),
+      this.getOnboardedDeals(providerId, null),
+    ]);
+
+    const activeDeals = deals.filter((deal) => deal.endedAt === null);
+    const dealsCompliance = await Promise.all(
+      activeDeals.map(async (deal) => {
+        const measurements = await this.urlFinderService.getDealMeasurements(
+          deal.dealId,
+          from,
+          to,
+        );
+
+        return this.getDealCompliance(deal, measurements);
+      }),
+    );
+
+    const countDeals = (state: PoRepComplianceState) =>
+      dealsCompliance.filter((item) => item.state === state).length;
+
+    return {
+      totalDealsCount: totalDealsCount,
+      activeDealsCount: activeDeals.length,
+      compliantDealsPercentage: safeDiv(
+        countDeals('compliant'),
+        activeDeals.length,
+        null,
+      ),
+      compliantDealsCount: countDeals('compliant'),
+      nonCompliantDealsCount: countDeals('nonCompliant'),
+      unknownDealsCount: countDeals('unknown'),
+      averageSla: this.getAverageSla(dealsCompliance),
+    };
+  }
+
+  public async getSLIComplianceHistory({
+    windowSize = 'day',
+    providerId = null,
+    dealId = null,
+  }: PoRepSLIComplianceHistoryParameters): Promise<
+    PoRepSLIComplianceHistoryEntry[]
+  > {
+    const deals = await this.getOnboardedDeals(providerId, dealId);
+
+    if (deals.length === 0) {
+      return [];
+    }
+
+    const now = DateTime.utc();
+    const dealsMeasurements = await Promise.all(
+      deals.map((deal) =>
+        this.urlFinderService.getDealMeasurements(
+          deal.dealId,
+          deal.onboardedAt,
+          deal.endedAt ?? now,
+        ),
+      ),
+    );
+
+    const entries: PoRepSLIComplianceHistoryEntry[] = [];
+
+    for (
+      let windowStart = DateTime.min(
+        ...deals.map((deal) => deal.onboardedAt),
+      ).startOf(windowSize);
+      windowStart <= now;
+      windowStart = windowStart.plus({ [windowSize]: 1 })
+    ) {
+      const windowEnd = windowStart.plus({ [windowSize]: 1 });
+      const windowDealsCompliance = deals.flatMap((deal, index) => {
+        if (
+          deal.onboardedAt >= windowEnd ||
+          (deal.endedAt !== null && deal.endedAt < windowStart)
+        ) {
+          return [];
+        }
+
+        const windowMeasurements = dealsMeasurements[index].filter(
+          (measurement) => {
+            const testedAt = DateTime.fromISO(measurement.tested_at, {
+              zone: 'UTC',
+            });
+
+            return testedAt >= windowStart && testedAt < windowEnd;
+          },
+        );
+
+        return [this.getDealCompliance(deal, windowMeasurements)];
+      });
+
+      entries.push({
+        date: windowStart.toISODate(),
+        averageSla: this.getAverageSla(windowDealsCompliance),
+        compliant: this.getComplianceStateValues(
+          windowDealsCompliance,
+          'compliant',
+        ),
+        nonCompliant: this.getComplianceStateValues(
+          windowDealsCompliance,
+          'nonCompliant',
+        ),
+        unknown: this.getComplianceStateValues(
+          windowDealsCompliance,
+          'unknown',
+        ),
+      });
+    }
+
+    return entries;
+  }
+
   public async getDealsDoneCountUpToDate(upToDate?: Date): Promise<number> {
     const cutoffBlock = dateToFilecoinBlockHeight(
       upToDate ?? DateTime.utc().toJSDate(),
@@ -541,6 +701,152 @@ export class PoRepService {
       },
       [],
     );
+  }
+
+  private async getOnboardedDeals(
+    providerId: F0IdInput | null,
+    dealId: string | null,
+  ): Promise<OnboardedDeal[]> {
+    const results = await createPoRepOnboardedDealsQuery(this.queryBuilder, {
+      providersIds: providerId,
+      dealsIds: dealId,
+    }).execute();
+
+    return results.map((result) => ({
+      dealId: BigInt(result.deal_id),
+      providerId: result.provider_id.toString(),
+      dealSizeBytes: BigInt(result.deal_size_bytes),
+      requiredRetrievabilityBps: result.required_retrievability_bps,
+      requiredBandwidthMbps:
+        stringToNumber(result.required_bandwidth_bytes_per_second.toString()) /
+        125000,
+      requiredLatencyMs: result.required_latency_ms,
+      onboardedAt: DateTime.fromJSDate(
+        this.epochToDate(BigInt(result.onboarded_at_epoch)),
+        { zone: 'UTC' },
+      ),
+      endedAt:
+        result.ended_at_epoch !== null
+          ? DateTime.fromJSDate(
+              this.epochToDate(BigInt(result.ended_at_epoch)),
+              { zone: 'UTC' },
+            )
+          : null,
+    }));
+  }
+
+  private getDealCompliance(
+    deal: OnboardedDeal,
+    measurements: UrlFinderDealMeasurement[],
+  ): DealCompliance {
+    const results = measurements
+      .map((measurement) => this.getMeasurementResult(deal, measurement))
+      .filter((result) => result !== null);
+
+    if (results.length === 0) {
+      return {
+        deal: deal,
+        state: 'unknown',
+        sla: null,
+      };
+    }
+
+    const passedCount = results.filter((result) => result).length;
+
+    return {
+      deal: deal,
+      state: passedCount === results.length ? 'compliant' : 'nonCompliant',
+      sla: passedCount / results.length,
+    };
+  }
+
+  private getMeasurementResult(
+    deal: OnboardedDeal,
+    measurement: UrlFinderDealMeasurement,
+  ): boolean | null {
+    if (measurement.measurement_state === 'failed') {
+      return false;
+    }
+
+    const sliPairs: [
+      requiredValue: number,
+      measuredValue: number | null,
+      reverseCheck: boolean,
+    ][] = [
+      [
+        deal.requiredRetrievabilityBps,
+        measurement.porep_slis.retrievability_bps,
+        false,
+      ],
+      [
+        deal.requiredBandwidthMbps,
+        measurement.porep_slis.bandwidth_mbps,
+        false,
+      ],
+      [deal.requiredLatencyMs, measurement.porep_slis.latency_ms, true],
+    ];
+
+    const requiredSliPairs = sliPairs.filter(
+      ([requiredValue]) => requiredValue > 0,
+    );
+
+    if (requiredSliPairs.some(([, measuredValue]) => measuredValue === null)) {
+      return null;
+    }
+
+    return requiredSliPairs.every(
+      ([requiredValue, measuredValue, reverseCheck]) =>
+        reverseCheck
+          ? measuredValue <= requiredValue
+          : measuredValue >= requiredValue,
+    );
+  }
+
+  private getAverageSla(dealsCompliance: DealCompliance[]): number | null {
+    return arrayAverage(
+      dealsCompliance.map((item) => item.sla).filter((sla) => sla !== null),
+    );
+  }
+
+  private getComplianceStateValues(
+    dealsCompliance: DealCompliance[],
+    state: PoRepComplianceState,
+  ): PoRepSLIComplianceHistoryStateValues {
+    const stateDealsCompliance = dealsCompliance.filter(
+      (item) => item.state === state,
+    );
+    const providersCount = uniq(
+      stateDealsCompliance.map((item) => item.deal.providerId),
+    ).length;
+    const totalProvidersCount = uniq(
+      dealsCompliance.map((item) => item.deal.providerId),
+    ).length;
+    const dealsSize = stateDealsCompliance.reduce(
+      (total, item) => total + item.deal.dealSizeBytes,
+      0n,
+    );
+    const totalDealsSize = dealsCompliance.reduce(
+      (total, item) => total + item.deal.dealSizeBytes,
+      0n,
+    );
+
+    return {
+      providersCount: providersCount,
+      providersPercentage: safeDiv(providersCount, totalProvidersCount, 0),
+      dealsCount: stateDealsCompliance.length,
+      dealsPercentage: safeDiv(
+        stateDealsCompliance.length,
+        dealsCompliance.length,
+        0,
+      ),
+      totalDealsSize: dealsSize.toString(),
+      totalDealsSizePercentage:
+        totalDealsSize === 0n
+          ? 0
+          : Decimal(dealsSize.toString())
+              .div(totalDealsSize.toString())
+              .toNumber(),
+    };
   }
 
   private isTestnet(): boolean {

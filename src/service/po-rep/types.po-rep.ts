@@ -10,7 +10,12 @@ import {
 } from 'class-validator';
 import { PoRepDealState, PoRepDealType } from '../../generated/prisma/client';
 import { F0Id } from 'src/utils/utils';
-import { F0IdInput, IsCID, IsF0IdInput } from 'src/utils/validators';
+import {
+  F0IdInput,
+  IsBigIntLike,
+  IsCID,
+  IsF0IdInput,
+} from 'src/utils/validators';
 
 export const poRepHistoryWindowSize = ['day', 'week', 'month'] as const;
 
@@ -593,4 +598,147 @@ export class PoRepDealsValueHistoryParameters extends PoRepHistoryParameters {
   @IsF0IdInput()
   @IsOptional()
   providerId?: F0IdInput;
+}
+
+// SLI compliance
+export type PoRepComplianceState = 'compliant' | 'nonCompliant' | 'unknown';
+
+export class PoRepSLIComplianceHistoryParameters extends PoRepHistoryParameters {
+  @ApiPropertyOptional({
+    description: 'Provider ID to filter by, no filter by default',
+    required: false,
+    type: 'string',
+  })
+  @IsOptional()
+  @IsF0IdInput()
+  providerId?: F0IdInput;
+
+  @ApiPropertyOptional({
+    description: 'Deal ID to filter by, no filter by default',
+    required: false,
+    type: 'string',
+  })
+  @IsOptional()
+  @IsBigIntLike()
+  dealId?: string;
+}
+
+export class PoRepSLIComplianceHistoryStateValues {
+  @ApiProperty({
+    description:
+      'Number of providers having at least one deal matching given state',
+  })
+  providersCount: number;
+
+  @ApiProperty({
+    description:
+      'Percentage of providers having at least one deal matching given state',
+  })
+  providersPercentage: number;
+
+  @ApiProperty({
+    description: 'Number of deals matching given state',
+  })
+  dealsCount: number;
+
+  @ApiProperty({
+    description: 'Percentage of deals matching given state',
+  })
+  dealsPercentage: number;
+
+  @ApiProperty({
+    description: 'Total size of deals matching given state in bytes',
+  })
+  totalDealsSize: string;
+
+  @ApiProperty({
+    description: 'Percentage of deals size matching given state',
+  })
+  totalDealsSizePercentage: number;
+}
+
+export class PoRepSLIComplianceHistoryEntry {
+  @ApiProperty({
+    description: 'Window start ISO date (UTC)',
+  })
+  date: string;
+
+  @ApiProperty({
+    description: `Average SLA of deals active in given window, eg. average
+      share of URL Finder measurements in which all SLIs required by the deal
+      were met. Null when none of the deals was measured in given window.`,
+    type: Number,
+    nullable: true,
+  })
+  averageSla: number | null;
+
+  @ApiProperty({
+    description: `Values for compliant deals. Compliant deals are those that
+      were measured in given window and all SLIs required by the deal were met
+      in every measurement.`,
+  })
+  compliant: PoRepSLIComplianceHistoryStateValues;
+
+  @ApiProperty({
+    description: `Values for non-compliant deals. Non-compliant deals are
+      those for which any of the SLIs required by the deal was not met in any
+      measurement in given window.`,
+  })
+  nonCompliant: PoRepSLIComplianceHistoryStateValues;
+
+  @ApiProperty({
+    description: `Values for unknown state deals. Unknown deals are those for
+      which none of the measurements in given window measured all SLIs
+      required by the deal.`,
+  })
+  unknown: PoRepSLIComplianceHistoryStateValues;
+}
+
+export class PoRepProviderComplianceStatistics {
+  @ApiProperty({
+    description: 'Total count of deals made with provider',
+  })
+  totalDealsCount: number;
+
+  @ApiProperty({
+    description: `Count of deals with data onboarded, that did not reach
+      ${PoRepDealState.FINALIZED}, ${PoRepDealState.EXPIRED} or
+      ${PoRepDealState.EARLY_TERMINATED} state.`,
+  })
+  activeDealsCount: number;
+
+  @ApiProperty({
+    description: `Percentage of active provider deals that are compliant in
+      the last 30 days. Null when provider has no active deals.`,
+    type: Number,
+    nullable: true,
+  })
+  compliantDealsPercentage: number | null;
+
+  @ApiProperty({
+    description: `Count of active provider deals that are compliant in the last
+      30 days, see SLI compliance history for state definitions.`,
+  })
+  compliantDealsCount: number;
+
+  @ApiProperty({
+    description: `Count of active provider deals that are non-compliant in the
+      last 30 days, see SLI compliance history for state definitions.`,
+  })
+  nonCompliantDealsCount: number;
+
+  @ApiProperty({
+    description: `Count of active provider deals with unknown compliance state
+      in the last 30 days, see SLI compliance history for state definitions.`,
+  })
+  unknownDealsCount: number;
+
+  @ApiProperty({
+    description: `Average SLA of active provider deals in the last 30 days, eg.
+      average share of URL Finder measurements in which all SLIs required by
+      the deal were met. Null when none of the deals was measured.`,
+    type: Number,
+    nullable: true,
+  })
+  averageSla: number | null;
 }

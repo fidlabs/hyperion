@@ -4,10 +4,17 @@ import {
   Controller,
   Get,
   Inject,
+  NotFoundException,
+  Param,
   Query,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+} from '@nestjs/swagger';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
   PoRepDealsList,
@@ -18,8 +25,12 @@ import {
   PoRepDealsValueHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
+  PoRepProviderComplianceStatistics,
+  PoRepSLIComplianceHistoryEntry,
+  PoRepSLIComplianceHistoryParameters,
 } from 'src/service/po-rep/types.po-rep';
 import { ControllerBase } from '../base/controller-base';
+import { PoRepProviderResourceParameters } from './types.po-rep';
 
 @Controller('po-rep')
 @CacheTTL(1000 * 60 * 30) // 30 minutes
@@ -81,5 +92,52 @@ export class PoRepController extends ControllerBase {
     query: PoRepDealsPaymentsHistoryParameters,
   ): Promise<PoRepDealsPaymentsHistoryEntry[]> {
     return this.poRepService.getDealsPaymentsSummaryHistory(query);
+  }
+
+  @Get('/sli-compliance-history')
+  @ApiOperation({
+    summary:
+      'Get the history of deals SLI compliance, optionally filtered by Provider ID or Deal ID',
+  })
+  @ApiOkResponse({
+    type: [PoRepSLIComplianceHistoryEntry],
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  public async getSLIComplianceHistory(
+    @Query() query: PoRepSLIComplianceHistoryParameters,
+  ): Promise<PoRepSLIComplianceHistoryEntry[]> {
+    return this.poRepService.getSLIComplianceHistory(query);
+  }
+
+  @Get('/providers/:providerId/compliance-stats')
+  @ApiOperation({
+    summary: 'Get po-rep compliance statistics for given provider id.',
+  })
+  @ApiOkResponse({
+    description: 'Po-rep provider compliance statistics',
+    type: PoRepProviderComplianceStatistics,
+  })
+  @ApiBadRequestResponse({
+    description: 'Error response when invalid provider id is given.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Error response when provider with given id does not exist.',
+  })
+  public async getProviderComplianceStatistics(
+    @Param() parameters: PoRepProviderResourceParameters,
+  ): Promise<PoRepProviderComplianceStatistics> {
+    const stats = await this.poRepService.getProviderComplianceStatistics(
+      parameters.providerId,
+    );
+
+    if (!stats) {
+      throw new NotFoundException(
+        `Po-rep provider with ID "${parameters.providerId}" does not exist.`,
+      );
+    }
+
+    return stats;
   }
 }
