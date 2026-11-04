@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { groupBy, uniq } from 'lodash';
+import { groupBy, sumBy, uniq } from 'lodash';
 import { DateTime } from 'luxon';
 import { Prisma as PrismaRuntime } from '../../generated/prisma/client';
 import { InjectQueryBuilder, QueryBuilder } from 'src/db';
@@ -69,6 +69,8 @@ interface DealCompliance {
   deal: OnboardedDeal;
   state: PoRepComplianceState;
   sla: number | null;
+  measurementsCount: number;
+  expectedMeasurementsCount: number;
 }
 
 const Decimal = PrismaRuntime.Decimal;
@@ -479,7 +481,7 @@ export class PoRepService {
           to,
         );
 
-        return this.getDealCompliance(deal, measurements);
+        return this.getDealCompliance(deal, measurements, from, to);
       }),
     );
 
@@ -498,6 +500,11 @@ export class PoRepService {
       nonCompliantDealsCount: countDeals('nonCompliant'),
       unknownDealsCount: countDeals('unknown'),
       averageSla: this.getAverageSla(dealsCompliance),
+      measurementsCount: sumBy(dealsCompliance, 'measurementsCount'),
+      expectedMeasurementsCount: sumBy(
+        dealsCompliance,
+        'expectedMeasurementsCount',
+      ),
     };
   }
 
@@ -553,12 +560,24 @@ export class PoRepService {
           },
         );
 
-        return [this.getDealCompliance(deal, windowMeasurements)];
+        return [
+          this.getDealCompliance(
+            deal,
+            windowMeasurements,
+            windowStart,
+            DateTime.min(windowEnd, now),
+          ),
+        ];
       });
 
       entries.push({
         date: windowStart.toISODate(),
         averageSla: this.getAverageSla(windowDealsCompliance),
+        measurementsCount: sumBy(windowDealsCompliance, 'measurementsCount'),
+        expectedMeasurementsCount: sumBy(
+          windowDealsCompliance,
+          'expectedMeasurementsCount',
+        ),
         compliant: this.getComplianceStateValues(
           windowDealsCompliance,
           'compliant',
@@ -738,16 +757,27 @@ export class PoRepService {
   private getDealCompliance(
     deal: OnboardedDeal,
     measurements: UrlFinderDealMeasurement[],
+    from: DateTime,
+    to: DateTime,
   ): DealCompliance {
     const results = measurements
       .map((measurement) => this.getMeasurementResult(deal, measurement))
       .filter((result) => result !== null);
+    const periodStart = DateTime.max(from, deal.onboardedAt);
+    const periodEnd =
+      deal.endedAt !== null ? DateTime.min(to, deal.endedAt) : to;
+    const expectedMeasurementsCount = Math.max(
+      Math.ceil(periodEnd.diff(periodStart, 'days').days),
+      0,
+    );
 
     if (results.length === 0) {
       return {
         deal: deal,
         state: 'unknown',
         sla: null,
+        measurementsCount: 0,
+        expectedMeasurementsCount: expectedMeasurementsCount,
       };
     }
 
@@ -757,6 +787,8 @@ export class PoRepService {
       deal: deal,
       state: passedCount === results.length ? 'compliant' : 'nonCompliant',
       sla: passedCount / results.length,
+      measurementsCount: results.length,
+      expectedMeasurementsCount: expectedMeasurementsCount,
     };
   }
 

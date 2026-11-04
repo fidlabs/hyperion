@@ -673,6 +673,19 @@ export class PoRepSLIComplianceHistoryEntry {
   averageSla: number | null;
 
   @ApiProperty({
+    description: `Count of URL Finder measurements of deals active in given
+      window, that average SLA is based on.`,
+  })
+  measurementsCount: number;
+
+  @ApiProperty({
+    description: `Expected count of measurements of deals active in given
+      window, assuming one measurement per deal per day. Lower measurements
+      count means that some measurements are missing.`,
+  })
+  expectedMeasurementsCount: number;
+
+  @ApiProperty({
     description: `Values for compliant deals. Compliant deals are those that
       were measured in given window and all SLIs required by the deal were met
       in every measurement.`,
@@ -741,4 +754,17 @@ export class PoRepProviderComplianceStatistics {
     nullable: true,
   })
   averageSla: number | null;
+
+  @ApiProperty({
+    description: `Count of URL Finder measurements of active provider deals in
+      the last 30 days, that average SLA is based on.`,
+  })
+  measurementsCount: number;
+
+  @ApiProperty({
+    description: `Expected count of measurements of active provider deals in
+      the last 30 days, assuming one measurement per deal per day. Lower
+      measurements count means that some measurements are missing.`,
+  })
+  expectedMeasurementsCount: number;
 }
