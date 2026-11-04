@@ -5,6 +5,7 @@ import {
   IsEnum,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   Min,
 } from 'class-validator';
@@ -619,6 +620,7 @@ export class PoRepSLIComplianceHistoryParameters extends PoRepHistoryParameters 
     type: 'string',
   })
   @IsOptional()
+  @IsNotEmpty()
   @IsBigIntLike()
   dealId?: string;
 }

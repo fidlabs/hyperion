@@ -6,6 +6,7 @@ import { Semaphore } from 'async-mutex';
 import { DateTime } from 'luxon';
 import { lastValueFrom } from 'rxjs';
 import { Cacheable } from 'src/utils/cacheable';
+import { Retryable } from 'src/utils/retryable';
 import {
   UrlFinderDealMeasurement,
   UrlFinderDealSliHistoryResponse,
@@ -73,33 +74,50 @@ export class UrlFinderService {
     from: string,
     to: string,
   ): Promise<UrlFinderDealMeasurement[]> {
-    const endpoint = `${this.configService.get<string>('URL_FINDER_API_URL')}/deals/${dealId}/history/sli`;
     const measurements: UrlFinderDealMeasurement[] = [];
     let cursor: string | null = null;
 
+    do {
+      const page = await this.getDealSliHistoryPage(dealId, from, to, cursor);
+
+      if (page === null) {
+        return [];
+      }
+
+      measurements.push(...Object.values(page.data).flat());
+      cursor = page.next_cursor;
+    } while (cursor !== null);
+
+    return measurements;
+  }
+
+  @Retryable({ retries: 3, delay: 5000 }) // 5 seconds
+  private async getDealSliHistoryPage(
+    dealId: string,
+    from: string,
+    to: string,
+    cursor: string | null,
+  ): Promise<UrlFinderDealSliHistoryResponse | null> {
+    const endpoint = `${this.configService.get<string>('URL_FINDER_API_URL')}/deals/${dealId}/history/sli`;
+
     try {
-      do {
-        const { data } = await this.requestsSemaphore.runExclusive(() =>
-          lastValueFrom(
-            this.httpService.get<UrlFinderDealSliHistoryResponse>(endpoint, {
-              params: {
-                from: from,
-                to: to,
-                limit: 500,
-                cursor: cursor ?? undefined,
-              },
-            }),
-          ),
-        );
+      const { data } = await this.requestsSemaphore.runExclusive(() =>
+        lastValueFrom(
+          this.httpService.get<UrlFinderDealSliHistoryResponse>(endpoint, {
+            params: {
+              from: from,
+              to: to,
+              limit: 500,
+              cursor: cursor ?? undefined,
+            },
+          }),
+        ),
+      );
 
-        measurements.push(...Object.values(data.data).flat());
-        cursor = data.next_cursor;
-      } while (cursor !== null);
-
-      return measurements;
+      return data;
     } catch (err) {
       if (err.response?.status === HttpStatus.NOT_FOUND) {
-        return [];
+        return null;
       }
 
       throw new Error(
