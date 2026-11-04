@@ -822,16 +822,22 @@ export class PoRepService {
       ([requiredValue]) => requiredValue > 0,
     );
 
-    if (requiredSliPairs.some(([, measuredValue]) => measuredValue === null)) {
-      return null;
-    }
+    const measuredSliPairs = requiredSliPairs.filter(
+      ([, measuredValue]) => measuredValue !== null,
+    );
 
-    return requiredSliPairs.every(
+    const measuredSlisMet = measuredSliPairs.every(
       ([requiredValue, measuredValue, reverseCheck]) =>
         reverseCheck
           ? measuredValue <= requiredValue
           : measuredValue >= requiredValue,
     );
+
+    if (!measuredSlisMet) {
+      return false;
+    }
+
+    return measuredSliPairs.length === requiredSliPairs.length ? true : null;
   }
 
   private getAverageSla(dealsCompliance: DealCompliance[]): number | null {
