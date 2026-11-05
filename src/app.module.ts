@@ -23,6 +23,7 @@ import { EthApiService } from './service/eth-api/eth-api.service';
 import { LotusApiService } from './service/lotus-api/lotus-api.service';
 import { PoRepPriceOracleService } from './service/po-rep-price-oracle/po-rep-price-oracle.service';
 import { PoRepService } from './service/po-rep/po-rep.service';
+import { UrlFinderService } from './service/url-finder/url-finder.service';
 import { queryBuilderProviders } from './db';
 import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-runner/ipni-reporting-daily-runner.service';
 import { IPNIController } from 'src/controller/ipni/ipni.controller';
@@ -54,6 +55,7 @@ import { IPNIController } from 'src/controller/ipni/ipni.controller';
     PostgresService,
     PoRepPriceOracleService,
     PoRepService,
+    UrlFinderService,
     { provide: APP_FILTER, useClass: ErrorHandlerMiddleware },
     { provide: APP_INTERCEPTOR, useClass: CacheInterceptor },
     {
