@@ -533,6 +533,19 @@ export class PoRepProviderStorageStatistics {
   onboardedBytes: bigint;
 }
 
+export interface PoRepProvidersStatistics {
+  totalProvidersCount: number;
+  activeProvidersCount: number;
+  earningsUSD: number;
+}
+
+export interface PoRepProvidersHistoryEntry {
+  date: string;
+  newProvidersCount: number;
+  totalProvidersCount: number;
+  activeProvidersCount: number;
+}
+
 export class PoRepProviderEconomicsStatistics {
   @ApiProperty({
     description:

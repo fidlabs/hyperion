@@ -11,6 +11,11 @@ import { createPoRepOnboardedDataHistoryQuery } from 'src/db/queries/po-rep-onbo
 import { createPoRepOnboardedDealsQuery } from 'src/db/queries/po-rep-onboarded-deals.query';
 import { createPoRepProviderEconomicsStatisticsQuery } from 'src/db/queries/po-rep-provider-economics-statistics.query';
 import { createPoRepProviderStorageStatisticsQuery } from 'src/db/queries/po-rep-provider-storage-statistics.query';
+import {
+  createPoRepActiveProvidersCountQuery,
+  createPoRepProvidersEarningsQuery,
+  createPoRepProvidersHistoryQuery,
+} from 'src/db/queries/po-rep-providers-statistics.query';
 import { PoRepPublicClient, RECENT_NODE_CLIENT } from 'src/po-rep-indexer';
 import {
   arrayAverage,
@@ -38,9 +43,12 @@ import {
   PoRepDealsValueHistoryEntry,
   PoRepDealsValueHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
+  PoRepHistoryParameters,
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderComplianceStatistics,
   PoRepProviderEconomicsStatistics,
+  PoRepProvidersHistoryEntry,
+  PoRepProvidersStatistics,
   PoRepProviderStorageStatistics,
   PoRepSLIComplianceHistoryEntry,
   PoRepSLIComplianceHistoryParameters,
@@ -342,6 +350,100 @@ export class PoRepService {
         lastSettlementAt: null,
       },
     );
+  }
+
+  public async getProvidersStatistics(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<PoRepProvidersStatistics> {
+    const periodStartEpoch =
+      periodStart !== null
+        ? dateToFilecoinBlockHeight(periodStart.toJSDate(), {
+            testnet: this.isTestnet(),
+          })
+        : null;
+    const periodEndEpoch = dateToFilecoinBlockHeight(periodEnd.toJSDate(), {
+      testnet: this.isTestnet(),
+    });
+
+    const [totalProvidersCount, activeProviders, earnings] = await Promise.all([
+      this.prismaService.po_rep_storage_provider.count({
+        where: {
+          registeredAtBlock: {
+            lte: periodEndEpoch,
+          },
+        },
+      }),
+      createPoRepActiveProvidersCountQuery(this.queryBuilder, {
+        periodEndEpoch: periodEndEpoch,
+      }).executeTakeFirstOrThrow(),
+      createPoRepProvidersEarningsQuery(this.queryBuilder, {
+        periodStartEpoch: periodStartEpoch,
+        periodEndEpoch: periodEndEpoch,
+      }).execute(),
+    ]);
+
+    const uniqueTokens = uniq(earnings.map((item) => item.token_address));
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    const earningsUSD = earnings.reduce((totalUSD, item) => {
+      const tokenExponent =
+        10n ** BigInt(tokensDetails.get(item.token_address).tokenDecimals);
+
+      return totalUSD.add(
+        Decimal(item.net_amount.toString())
+          .div(tokenExponent.toString())
+          .mul(tokensExchangeRatesUSD.get(item.token_address)),
+      );
+    }, Decimal(0));
+
+    return {
+      totalProvidersCount: totalProvidersCount,
+      activeProvidersCount: stringToNumber(
+        activeProviders.active_providers_count.toString(),
+      ),
+      earningsUSD: earningsUSD.toDecimalPlaces(2).toNumber(),
+    };
+  }
+
+  public async getProvidersHistory(
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepProvidersHistoryEntry[]> {
+    const results = await createPoRepProvidersHistoryQuery(this.queryBuilder, {
+      genesisTimestamp: getFilecoinGenesisTimestamp({
+        testnet: this.isTestnet(),
+      }),
+      windowSize: windowSize,
+      periodStart: periodStart !== null ? periodStart.toJSDate() : null,
+    }).execute();
+
+    const firstWindowDate =
+      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+
+    return results
+      .map((result) => {
+        return {
+          date: DateTime.fromJSDate(result.window_start, {
+            zone: 'UTC',
+          }).toISODate(),
+          newProvidersCount: stringToNumber(
+            result.new_providers_count.toString(),
+          ),
+          totalProvidersCount: stringToNumber(
+            result.total_providers_count.toString(),
+          ),
+          activeProvidersCount: stringToNumber(
+            result.active_providers_count.toString(),
+          ),
+        };
+      })
+      .filter(
+        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+      );
   }
 
   public async getDealsPaymentsSummaryHistory({
