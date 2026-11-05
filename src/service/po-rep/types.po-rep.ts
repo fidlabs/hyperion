@@ -556,7 +556,8 @@ export class PoRepProviderEconomicsStatistics {
   predictedRevenueUSD: number;
 
   @ApiProperty({
-    description: 'Total net amount settled for all deals in USD',
+    description: `Total amount settled for all deals in USD. Includes network
+      fees and operator commission.`,
   })
   totalSettledUSD: number;
 
@@ -603,6 +604,7 @@ export class PoRepDealsValueHistoryParameters extends PoRepHistoryParameters {
 
 // SLI compliance
 export type PoRepComplianceState = 'compliant' | 'nonCompliant' | 'unknown';
+export type PoRepSLIIndicator = 'retrievability' | 'latency' | 'bandwidth';
 
 export class PoRepSLIComplianceHistoryParameters extends PoRepHistoryParameters {
   @ApiPropertyOptional({
@@ -709,6 +711,33 @@ export class PoRepSLIComplianceHistoryEntry {
   unknown: PoRepSLIComplianceHistoryStateValues;
 }
 
+export class PoRepNonCompliantDealsCountByIndicator {
+  @ApiProperty({
+    description: `Count of non-compliant deals for which required
+      retrievability was not met in any measurement`,
+  })
+  retrievability: number;
+
+  @ApiProperty({
+    description: `Count of non-compliant deals for which required latency was
+      not met in any measurement`,
+  })
+  latency: number;
+
+  @ApiProperty({
+    description: `Count of non-compliant deals for which required bandwidth was
+      not met in any measurement`,
+  })
+  bandwidth: number;
+
+  @ApiProperty({
+    description: 'Always null, indexing is not measured by URL Finder yet',
+    type: Number,
+    nullable: true,
+  })
+  indexing: number | null;
+}
+
 export class PoRepProviderComplianceStatistics {
   @ApiProperty({
     description: 'Total count of deals made with provider',
@@ -747,6 +776,13 @@ export class PoRepProviderComplianceStatistics {
       in the last 30 days, see SLI compliance history for state definitions.`,
   })
   unknownDealsCount: number;
+
+  @ApiProperty({
+    description: `Count of active provider deals that are non-compliant in the
+      last 30 days, by SLI that was not met. A deal can be counted for more
+      than one SLI.`,
+  })
+  nonCompliantDealsCountByIndicator: PoRepNonCompliantDealsCountByIndicator;
 
   @ApiProperty({
     description: `Average SLA of active provider deals in the last 30 days, eg.

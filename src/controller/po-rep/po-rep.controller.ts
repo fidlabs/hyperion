@@ -26,6 +26,8 @@ import {
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderComplianceStatistics,
+  PoRepProviderEconomicsStatistics,
+  PoRepProviderStorageStatistics,
   PoRepSLIComplianceHistoryEntry,
   PoRepSLIComplianceHistoryParameters,
 } from 'src/service/po-rep/types.po-rep';
@@ -139,5 +141,57 @@ export class PoRepController extends ControllerBase {
     }
 
     return stats;
+  }
+
+  @Get('/providers/:providerId/storage-stats')
+  @ApiOperation({
+    summary: 'Get po-rep storage statistics for given provider id.',
+  })
+  @ApiOkResponse({
+    description: 'Po-rep provider storage statistics',
+    type: PoRepProviderStorageStatistics,
+  })
+  @ApiBadRequestResponse({
+    description: 'Error response when invalid provider id is given.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Error response when provider with given id does not exist.',
+  })
+  public async getProviderStorageStatistics(
+    @Param() parameters: PoRepProviderResourceParameters,
+  ): Promise<PoRepProviderStorageStatistics> {
+    const stats = await this.poRepService.getProviderStorageStatistics(
+      parameters.providerId,
+    );
+
+    if (!stats) {
+      throw new NotFoundException(
+        `Po-rep provider with ID "${parameters.providerId}" does not exist.`,
+      );
+    }
+
+    return stats;
+  }
+
+  @Get('/providers/:providerId/economics-stats')
+  @ApiOperation({
+    summary: 'Get po-rep economics statistics for given provider id.',
+  })
+  @ApiOkResponse({
+    description: 'Po-rep provider economics statistics',
+    type: PoRepProviderEconomicsStatistics,
+  })
+  @ApiBadRequestResponse({
+    description: 'Error response when invalid provider id is given.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Error response when provider with given id does not exist.',
+  })
+  public getProviderEconomicsStatistics(
+    @Param() parameters: PoRepProviderResourceParameters,
+  ): Promise<PoRepProviderEconomicsStatistics> {
+    return this.poRepService.getProviderEconomicsStatistics(
+      parameters.providerId,
+    );
   }
 }
