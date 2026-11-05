@@ -15,7 +15,11 @@ module.exports = {
     node: true,
     jest: true,
   },
-  ignorePatterns: ['.eslintrc.js', 'src/db/auto-generated/**'],
+  ignorePatterns: [
+    '.eslintrc.js',
+    'src/db/auto-generated/**',
+    'src/generated/prisma/**',
+  ],
   rules: {
     '@typescript-eslint/interface-name-prefix': 'off',
     '@typescript-eslint/explicit-function-return-type': 'off',

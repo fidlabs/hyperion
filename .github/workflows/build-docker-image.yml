@@ -1,5 +1,5 @@
 name: Build docker image
-run-name: "Build image for ${{ github.ref_name }} triggered by ${{ github.actor }} for ${{ inputs.environment }}; version: ${{ inputs.version || 'N/A'}}"
+run-name: "Build image for ${{ github.ref_name }} triggered by ${{ github.actor }}; version: ${{ inputs.version || 'N/A'}}"
 
 on:
   workflow_call:
@@ -8,7 +8,7 @@ on:
         required: false
         type: string
       commit_sha:
-        required: false
+        required: true
         type: string
 
 env:
@@ -16,6 +16,10 @@ env:
 
 jobs:
   build_and_push:
+    if: >-
+      github.event_name == 'release' ||
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: production
     services:
@@ -44,6 +48,12 @@ jobs:
         with:
           driver-opts: network=host
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
       - name: Install deps
         run: npm ci
 
@@ -67,9 +77,8 @@ jobs:
           flavor: latest=false
           images: public.ecr.aws/f4h6r4m9/${{ env.ECR_REPOSITORY }}
           tags: |
-            type=semver,pattern={{version}},value=${{ inputs.version }},enable=${{inputs.version != ''}}
-            type=ref,event=branch,pattern={{branch}}
-            type=ref,event=pr,pattern={{branch}}
+            type=semver,pattern={{version}},value=${{ inputs.version }},enable=${{ github.event_name == 'release' }}
+            type=ref,event=pr
 
       - name: Init tmp db
         run: npx prisma migrate reset --force --schema=./prisma/schema.prisma
@@ -80,8 +89,8 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=hyperion
+          cache-to: type=gha,mode=max,scope=hyperion
           github-token: ${{ secrets.GITHUB_TOKEN }}
           network: host
           secrets: |
