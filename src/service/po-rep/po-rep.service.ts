@@ -70,6 +70,7 @@ import {
   PoRepSLIComplianceHistoryEntry,
   PoRepSLIComplianceHistoryParameters,
   PoRepSLIComplianceHistoryStateValues,
+  PoRepSLIIndicator,
 } from './types.po-rep';
 import { ERC20TokenInfoService } from '../erc20-token-info/erc20-token-info.service';
 
@@ -96,6 +97,7 @@ interface DealCompliance {
   sla: number | null;
   measurementsCount: number;
   expectedMeasurementsCount: number;
+  notMetIndicators: PoRepSLIIndicator[];
 }
 
 interface DealsComplianceWindow {
@@ -635,6 +637,12 @@ export class PoRepService {
 
     const countDeals = (state: PoRepComplianceState) =>
       dealsCompliance.filter((item) => item.state === state).length;
+    const countNonCompliantDeals = (indicator: PoRepSLIIndicator) =>
+      dealsCompliance.filter(
+        (item) =>
+          item.state === 'nonCompliant' &&
+          item.notMetIndicators.includes(indicator),
+      ).length;
 
     return {
       totalDealsCount: totalDealsCount,
@@ -647,6 +655,12 @@ export class PoRepService {
       compliantDealsCount: countDeals('compliant'),
       nonCompliantDealsCount: countDeals('nonCompliant'),
       unknownDealsCount: countDeals('unknown'),
+      nonCompliantDealsCountByIndicator: {
+        retrievability: countNonCompliantDeals('retrievability'),
+        latency: countNonCompliantDeals('latency'),
+        bandwidth: countNonCompliantDeals('bandwidth'),
+        indexing: null,
+      },
       averageSla: this.getAverageSla(dealsCompliance),
       measurementsCount: sumBy(dealsCompliance, 'measurementsCount'),
       expectedMeasurementsCount: sumBy(
@@ -1099,6 +1113,13 @@ export class PoRepService {
     const results = measurements
       .map((measurement) => this.getMeasurementResult(deal, measurement))
       .filter((result) => result !== null);
+    const notMetIndicators = uniq(
+      measurements.flatMap((measurement) =>
+        this.getMeasurementSliResults(deal, measurement)
+          .filter(([, met]) => met === false)
+          .map(([indicator]) => indicator),
+      ),
+    );
     const periodStart = DateTime.max(from, deal.onboardedAt);
     const periodEnd =
       deal.endedAt !== null ? DateTime.min(to, deal.endedAt) : to;
@@ -1114,6 +1135,7 @@ export class PoRepService {
         sla: null,
         measurementsCount: 0,
         expectedMeasurementsCount: expectedMeasurementsCount,
+        notMetIndicators: notMetIndicators,
       };
     }
 
@@ -1125,6 +1147,7 @@ export class PoRepService {
       sla: passedCount / results.length,
       measurementsCount: results.length,
       expectedMeasurementsCount: expectedMeasurementsCount,
+      notMetIndicators: notMetIndicators,
     };
   }
 
@@ -1136,44 +1159,55 @@ export class PoRepService {
       return false;
     }
 
+    const sliResults = this.getMeasurementSliResults(deal, measurement);
+
+    if (sliResults.some(([, met]) => met === false)) {
+      return false;
+    }
+
+    return sliResults.every(([, met]) => met === true) ? true : null;
+  }
+
+  private getMeasurementSliResults(
+    deal: OnboardedDeal,
+    measurement: UrlFinderDealMeasurement,
+  ): [indicator: PoRepSLIIndicator, met: boolean | null][] {
     const sliPairs: [
+      indicator: PoRepSLIIndicator,
       requiredValue: number,
       measuredValue: number | null,
       reverseCheck: boolean,
     ][] = [
       [
+        'retrievability',
         deal.requiredRetrievabilityBps,
         measurement.porep_slis.retrievability_bps,
         false,
       ],
       [
+        'bandwidth',
         deal.requiredBandwidthMbps,
         measurement.porep_slis.bandwidth_mbps,
         false,
       ],
-      [deal.requiredLatencyMs, measurement.porep_slis.latency_ms, true],
+      [
+        'latency',
+        deal.requiredLatencyMs,
+        measurement.porep_slis.latency_ms,
+        true,
+      ],
     ];
 
-    const requiredSliPairs = sliPairs.filter(
-      ([requiredValue]) => requiredValue > 0,
-    );
-
-    const measuredSliPairs = requiredSliPairs.filter(
-      ([, measuredValue]) => measuredValue !== null,
-    );
-
-    const measuredSlisMet = measuredSliPairs.every(
-      ([requiredValue, measuredValue, reverseCheck]) =>
-        reverseCheck
-          ? measuredValue <= requiredValue
-          : measuredValue >= requiredValue,
-    );
-
-    if (!measuredSlisMet) {
-      return false;
-    }
-
-    return measuredSliPairs.length === requiredSliPairs.length ? true : null;
+    return sliPairs
+      .filter(([, requiredValue]) => requiredValue > 0)
+      .map(([indicator, requiredValue, measuredValue, reverseCheck]) => [
+        indicator,
+        measuredValue === null
+          ? null
+          : reverseCheck
+            ? measuredValue <= requiredValue
+            : measuredValue >= requiredValue,
+      ]);
   }
 
   private async getDealsComplianceHistory(
