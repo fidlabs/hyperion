@@ -537,6 +537,7 @@ export interface PoRepProvidersStatistics {
   totalProvidersCount: number;
   activeProvidersCount: number;
   earningsUSD: number;
+  averageSla: number | null;
 }
 
 export interface PoRepProvidersHistoryEntry {

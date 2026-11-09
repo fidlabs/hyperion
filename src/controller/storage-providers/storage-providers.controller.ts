@@ -128,7 +128,7 @@ export class StorageProvidersController extends ControllerBase {
       totalProvidersCount: this.fcssOnly(fcss.totalProvidersCount),
       activeProvidersCount: this.fcssOnly(fcss.activeProvidersCount),
       earningsUSD: this.fcssOnly(fcss.earningsUSD),
-      averageSla: this.fcssOnly(null),
+      averageSla: this.fcssOnly(fcss.averageSla),
     };
   }
 

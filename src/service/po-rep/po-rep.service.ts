@@ -366,22 +366,24 @@ export class PoRepService {
       testnet: this.isTestnet(),
     });
 
-    const [totalProvidersCount, activeProviders, earnings] = await Promise.all([
-      this.prismaService.po_rep_storage_provider.count({
-        where: {
-          registeredAtBlock: {
-            lte: periodEndEpoch,
+    const [totalProvidersCount, activeProviders, earnings, averageSla] =
+      await Promise.all([
+        this.prismaService.po_rep_storage_provider.count({
+          where: {
+            registeredAtBlock: {
+              lte: periodEndEpoch,
+            },
           },
-        },
-      }),
-      createPoRepActiveProvidersCountQuery(this.queryBuilder, {
-        periodEndEpoch: periodEndEpoch,
-      }).executeTakeFirstOrThrow(),
-      createPoRepProvidersEarningsQuery(this.queryBuilder, {
-        periodStartEpoch: periodStartEpoch,
-        periodEndEpoch: periodEndEpoch,
-      }).execute(),
-    ]);
+        }),
+        createPoRepActiveProvidersCountQuery(this.queryBuilder, {
+          periodEndEpoch: periodEndEpoch,
+        }).executeTakeFirstOrThrow(),
+        createPoRepProvidersEarningsQuery(this.queryBuilder, {
+          periodStartEpoch: periodStartEpoch,
+          periodEndEpoch: periodEndEpoch,
+        }).execute(),
+        this.getProvidersAverageSla(periodStart, periodEnd),
+      ]);
 
     const uniqueTokens = uniq(earnings.map((item) => item.token_address));
     const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
@@ -406,6 +408,7 @@ export class PoRepService {
         activeProviders.active_providers_count.toString(),
       ),
       earningsUSD: earningsUSD.toDecimalPlaces(2).toNumber(),
+      averageSla: averageSla,
     };
   }
 
@@ -940,6 +943,42 @@ export class PoRepService {
     }
 
     return measuredSliPairs.length === requiredSliPairs.length ? true : null;
+  }
+
+  private async getProvidersAverageSla(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<number | null> {
+    const deals = await this.getOnboardedDeals(null, null);
+    const periodDeals = deals.filter(
+      (deal) =>
+        deal.onboardedAt < periodEnd &&
+        (periodStart === null ||
+          deal.endedAt === null ||
+          deal.endedAt >= periodStart),
+    );
+
+    const dealsCompliance = await Promise.all(
+      periodDeals.map(async (deal) => {
+        const from =
+          periodStart !== null
+            ? DateTime.max(periodStart, deal.onboardedAt)
+            : deal.onboardedAt;
+        const to =
+          deal.endedAt !== null
+            ? DateTime.min(periodEnd, deal.endedAt)
+            : periodEnd;
+        const measurements = await this.urlFinderService.getDealMeasurements(
+          deal.dealId,
+          from,
+          to,
+        );
+
+        return this.getDealCompliance(deal, measurements, from, to);
+      }),
+    );
+
+    return this.getAverageSla(dealsCompliance);
   }
 
   private getAverageSla(dealsCompliance: DealCompliance[]): number | null {

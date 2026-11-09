@@ -71,8 +71,9 @@ export class StorageProvidersPeriodStatistics {
   earningsUSD: DashboardServiceValue;
 
   @ApiProperty({
-    description: `Average SLA of providers, eg. percentage of the contract met.
-      Null until SLA data is available.`,
+    description: `Average SLA of deals active in the period, eg. average share
+      of URL Finder measurements in which all SLIs required by the deal were
+      met. Null when none of the deals was measured in the period.`,
   })
   averageSla: DashboardServiceValue;
 }
