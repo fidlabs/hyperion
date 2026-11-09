@@ -48,6 +48,7 @@ import {
   PoRepProviderComplianceStatistics,
   PoRepProviderEconomicsStatistics,
   PoRepProvidersHistoryEntry,
+  PoRepProvidersSlaHistoryEntry,
   PoRepProvidersStatistics,
   PoRepProviderStorageStatistics,
   PoRepSLIComplianceHistoryEntry,
@@ -81,7 +82,13 @@ interface DealCompliance {
   expectedMeasurementsCount: number;
 }
 
+interface DealsComplianceWindow {
+  date: string;
+  dealsCompliance: DealCompliance[];
+}
+
 const Decimal = PrismaRuntime.Decimal;
+const slaTarget = 0.95;
 
 @Injectable()
 export class PoRepService {
@@ -621,84 +628,62 @@ export class PoRepService {
     PoRepSLIComplianceHistoryEntry[]
   > {
     const deals = await this.getOnboardedDeals(providerId, dealId);
+    const history = await this.getDealsComplianceHistory(deals, windowSize);
 
-    if (deals.length === 0) {
-      return [];
-    }
-
-    const now = DateTime.utc();
-    const dealsMeasurements = await Promise.all(
-      deals.map((deal) =>
-        this.urlFinderService.getDealMeasurements(
-          deal.dealId,
-          deal.onboardedAt,
-          deal.endedAt ?? now,
-        ),
-      ),
-    );
-
-    const entries: PoRepSLIComplianceHistoryEntry[] = [];
-
-    for (
-      let windowStart = DateTime.min(
-        ...deals.map((deal) => deal.onboardedAt),
-      ).startOf(windowSize);
-      windowStart <= now;
-      windowStart = windowStart.plus({ [windowSize]: 1 })
-    ) {
-      const windowEnd = windowStart.plus({ [windowSize]: 1 });
-      const windowDealsCompliance = deals.flatMap((deal, index) => {
-        if (
-          deal.onboardedAt >= windowEnd ||
-          (deal.endedAt !== null && deal.endedAt < windowStart)
-        ) {
-          return [];
-        }
-
-        const windowMeasurements = dealsMeasurements[index].filter(
-          (measurement) => {
-            const testedAt = DateTime.fromISO(measurement.tested_at, {
-              zone: 'UTC',
-            });
-
-            return testedAt >= windowStart && testedAt < windowEnd;
-          },
-        );
-
-        return [
-          this.getDealCompliance(
-            deal,
-            windowMeasurements,
-            windowStart,
-            DateTime.min(windowEnd, now),
-          ),
-        ];
-      });
-
-      entries.push({
-        date: windowStart.toISODate(),
-        averageSla: this.getAverageSla(windowDealsCompliance),
-        measurementsCount: sumBy(windowDealsCompliance, 'measurementsCount'),
+    return history.map(({ date, dealsCompliance }) => {
+      return {
+        date: date,
+        averageSla: this.getAverageSla(dealsCompliance),
+        measurementsCount: sumBy(dealsCompliance, 'measurementsCount'),
         expectedMeasurementsCount: sumBy(
-          windowDealsCompliance,
+          dealsCompliance,
           'expectedMeasurementsCount',
         ),
-        compliant: this.getComplianceStateValues(
-          windowDealsCompliance,
-          'compliant',
-        ),
+        compliant: this.getComplianceStateValues(dealsCompliance, 'compliant'),
         nonCompliant: this.getComplianceStateValues(
-          windowDealsCompliance,
+          dealsCompliance,
           'nonCompliant',
         ),
-        unknown: this.getComplianceStateValues(
-          windowDealsCompliance,
-          'unknown',
-        ),
-      });
-    }
+        unknown: this.getComplianceStateValues(dealsCompliance, 'unknown'),
+      };
+    });
+  }
 
-    return entries;
+  public async getProvidersSlaHistory(
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepProvidersSlaHistoryEntry[]> {
+    const deals = await this.getOnboardedDeals(null, null);
+    const history = await this.getDealsComplianceHistory(
+      deals,
+      windowSize,
+      periodStart,
+    );
+
+    return history.map(({ date, dealsCompliance }) => {
+      const providersSla = Object.values(
+        groupBy(dealsCompliance, (item) => item.deal.providerId),
+      )
+        .map((providerDealsCompliance) =>
+          this.getAverageSla(providerDealsCompliance),
+        )
+        .filter((sla) => sla !== null);
+      const providersBelowTargetCount = providersSla.filter(
+        (sla) => sla < slaTarget,
+      ).length;
+
+      return {
+        date: date,
+        averageSla: this.getAverageSla(dealsCompliance),
+        slaTarget: slaTarget,
+        providersBelowTargetCount: providersBelowTargetCount,
+        providersBelowTargetPercentage: safeDiv(
+          providersBelowTargetCount,
+          providersSla.length,
+          null,
+        ),
+      };
+    });
   }
 
   public async getDealsDoneCountUpToDate(upToDate?: Date): Promise<number> {
@@ -943,6 +928,82 @@ export class PoRepService {
     }
 
     return measuredSliPairs.length === requiredSliPairs.length ? true : null;
+  }
+
+  private async getDealsComplianceHistory(
+    deals: OnboardedDeal[],
+    windowSize: PoRepHistoryParameters['windowSize'],
+    periodStart: DateTime | null = null,
+  ): Promise<DealsComplianceWindow[]> {
+    if (deals.length === 0) {
+      return [];
+    }
+
+    const now = DateTime.utc();
+    const firstOnboardedAt = DateTime.min(
+      ...deals.map((deal) => deal.onboardedAt),
+    );
+    const firstWindowStart = (
+      periodStart !== null
+        ? DateTime.max(firstOnboardedAt, periodStart)
+        : firstOnboardedAt
+    ).startOf(windowSize);
+    const historyDeals = deals.filter(
+      (deal) => deal.endedAt === null || deal.endedAt >= firstWindowStart,
+    );
+    const dealsMeasurements = await Promise.all(
+      historyDeals.map((deal) =>
+        this.urlFinderService.getDealMeasurements(
+          deal.dealId,
+          DateTime.max(deal.onboardedAt, firstWindowStart),
+          deal.endedAt ?? now,
+        ),
+      ),
+    );
+
+    const history: DealsComplianceWindow[] = [];
+
+    for (
+      let windowStart = firstWindowStart;
+      windowStart <= now;
+      windowStart = windowStart.plus({ [windowSize]: 1 })
+    ) {
+      const windowEnd = windowStart.plus({ [windowSize]: 1 });
+      const windowDealsCompliance = historyDeals.flatMap((deal, index) => {
+        if (
+          deal.onboardedAt >= windowEnd ||
+          (deal.endedAt !== null && deal.endedAt < windowStart)
+        ) {
+          return [];
+        }
+
+        const windowMeasurements = dealsMeasurements[index].filter(
+          (measurement) => {
+            const testedAt = DateTime.fromISO(measurement.tested_at, {
+              zone: 'UTC',
+            });
+
+            return testedAt >= windowStart && testedAt < windowEnd;
+          },
+        );
+
+        return [
+          this.getDealCompliance(
+            deal,
+            windowMeasurements,
+            windowStart,
+            DateTime.min(windowEnd, now),
+          ),
+        ];
+      });
+
+      history.push({
+        date: windowStart.toISODate(),
+        dealsCompliance: windowDealsCompliance,
+      });
+    }
+
+    return history;
   }
 
   private async getProvidersAverageSla(

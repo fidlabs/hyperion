@@ -547,6 +547,14 @@ export interface PoRepProvidersHistoryEntry {
   activeProvidersCount: number;
 }
 
+export interface PoRepProvidersSlaHistoryEntry {
+  date: string;
+  averageSla: number | null;
+  slaTarget: number;
+  providersBelowTargetCount: number;
+  providersBelowTargetPercentage: number | null;
+}
+
 export class PoRepProviderEconomicsStatistics {
   @ApiProperty({
     description:

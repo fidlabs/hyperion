@@ -39,6 +39,38 @@ export class StorageProvidersHistoryEntry {
   activeProvidersCount: DashboardServiceValue;
 }
 
+export class StorageProvidersSlaHistoryEntry {
+  @ApiProperty({
+    description: 'Window start ISO date (UTC)',
+  })
+  date: string;
+
+  @ApiProperty({
+    description: `Average SLA of deals active in the window, eg. average share
+      of URL Finder measurements in which all SLIs required by the deal were
+      met. Null when none of the deals was measured in the window.`,
+  })
+  averageSla: DashboardServiceValue;
+
+  @ApiProperty({
+    description: 'SLA target that providers SLA is compared against',
+  })
+  slaTarget: DashboardServiceValue;
+
+  @ApiProperty({
+    description: `Count of providers with SLA below the target in the window.
+      Provider SLA is the average SLA of its deals active in the window.
+      Providers without measurements in the window are not included.`,
+  })
+  providersBelowTargetCount: DashboardServiceValue;
+
+  @ApiProperty({
+    description: `Percentage of providers measured in the window with SLA below
+      the target. Null when none of the providers was measured in the window.`,
+  })
+  providersBelowTargetPercentage: DashboardServiceValue;
+}
+
 export class StorageProvidersPeriodStatistics {
   @ApiProperty({
     description: 'ISO Datetime of the period start, null for "all" period',

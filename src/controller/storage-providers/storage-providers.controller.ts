@@ -26,6 +26,7 @@ import {
   StorageProvidersHistoryEntry,
   StorageProvidersHistoryRequest,
   StorageProvidersPeriodStatistics,
+  StorageProvidersSlaHistoryEntry,
   StorageProvidersStatistics,
 } from './types.storage-providers';
 
@@ -109,6 +110,50 @@ export class StorageProvidersController extends ControllerBase {
         newProvidersCount: this.fcssOnly(entry.newProvidersCount),
         totalProvidersCount: this.fcssOnly(entry.totalProvidersCount),
         activeProvidersCount: this.fcssOnly(entry.activeProvidersCount),
+      };
+    });
+  }
+
+  @Get('/sla-history')
+  @ApiOperation({
+    summary:
+      'Get history of average SLA and share of providers below the SLA target, starting from the period start',
+  })
+  @ApiOkResponse({
+    type: [StorageProvidersSlaHistoryEntry],
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  @ApiNotImplementedResponse({
+    description: 'SLA history for FWSS is not implemented yet',
+  })
+  public async getSlaHistory(
+    @Query()
+    {
+      period = '30d',
+      service = 'all',
+      windowSize = 'day',
+    }: StorageProvidersHistoryRequest,
+  ): Promise<StorageProvidersSlaHistoryEntry[]> {
+    this.validateServiceImplemented(service);
+
+    const fcss = await this.poRepService.getProvidersSlaHistory(
+      this.getDashboardPeriods(period).current.periodStart,
+      windowSize,
+    );
+
+    return fcss.map((entry) => {
+      return {
+        date: entry.date,
+        averageSla: this.fcssOnly(entry.averageSla),
+        slaTarget: this.fcssOnly(entry.slaTarget),
+        providersBelowTargetCount: this.fcssOnly(
+          entry.providersBelowTargetCount,
+        ),
+        providersBelowTargetPercentage: this.fcssOnly(
+          entry.providersBelowTargetPercentage,
+        ),
       };
     });
   }
