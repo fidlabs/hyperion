@@ -23,6 +23,8 @@ import {
   DashboardStatisticsRequest,
 } from '../base/types.controller-base';
 import {
+  StorageProvidersEarningsAgainstSla,
+  StorageProvidersEarningsAgainstSlaRequest,
   StorageProvidersHistoryEntry,
   StorageProvidersHistoryRequest,
   StorageProvidersPeriodStatistics,
@@ -156,6 +158,44 @@ export class StorageProvidersController extends ControllerBase {
         ),
       };
     });
+  }
+
+  @Get('/earnings-against-sla')
+  @ApiOperation({
+    summary:
+      'Get earnings and average SLA of each storage provider in the last 30 days',
+  })
+  @ApiOkResponse({
+    type: StorageProvidersEarningsAgainstSla,
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  @ApiNotImplementedResponse({
+    description: 'Earnings against SLA for FWSS are not implemented yet',
+  })
+  public async getEarningsAgainstSla(
+    @Query() { service = 'all' }: StorageProvidersEarningsAgainstSlaRequest,
+  ): Promise<StorageProvidersEarningsAgainstSla> {
+    this.validateServiceImplemented(service);
+
+    const { periodStart, periodEnd } = this.getDashboardPeriods('30d').current;
+    const fcss = await this.poRepService.getProvidersEarningsAgainstSla(
+      periodStart,
+      periodEnd,
+    );
+
+    return {
+      periodStart: periodStart.toJSDate(),
+      periodEnd: periodEnd.toJSDate(),
+      slaTarget: this.fcssOnly(fcss.slaTarget),
+      providers: fcss.providers.map((provider) => {
+        return {
+          ...provider,
+          service: 'fcss',
+        };
+      }),
+    };
   }
 
   private async getPeriodStatistics({

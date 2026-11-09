@@ -47,6 +47,7 @@ import {
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderComplianceStatistics,
   PoRepProviderEconomicsStatistics,
+  PoRepProvidersEarningsAgainstSla,
   PoRepProvidersHistoryEntry,
   PoRepProvidersSlaHistoryEntry,
   PoRepProvidersStatistics,
@@ -363,51 +364,34 @@ export class PoRepService {
     periodStart: DateTime | null,
     periodEnd: DateTime,
   ): Promise<PoRepProvidersStatistics> {
-    const periodStartEpoch =
-      periodStart !== null
-        ? dateToFilecoinBlockHeight(periodStart.toJSDate(), {
-            testnet: this.isTestnet(),
-          })
-        : null;
     const periodEndEpoch = dateToFilecoinBlockHeight(periodEnd.toJSDate(), {
       testnet: this.isTestnet(),
     });
 
-    const [totalProvidersCount, activeProviders, earnings, averageSla] =
-      await Promise.all([
-        this.prismaService.po_rep_storage_provider.count({
-          where: {
-            registeredAtBlock: {
-              lte: periodEndEpoch,
-            },
+    const [
+      totalProvidersCount,
+      activeProviders,
+      providersEarningsUSD,
+      dealsCompliance,
+    ] = await Promise.all([
+      this.prismaService.po_rep_storage_provider.count({
+        where: {
+          registeredAtBlock: {
+            lte: periodEndEpoch,
           },
-        }),
-        createPoRepActiveProvidersCountQuery(this.queryBuilder, {
-          periodEndEpoch: periodEndEpoch,
-        }).executeTakeFirstOrThrow(),
-        createPoRepProvidersEarningsQuery(this.queryBuilder, {
-          periodStartEpoch: periodStartEpoch,
-          periodEndEpoch: periodEndEpoch,
-        }).execute(),
-        this.getProvidersAverageSla(periodStart, periodEnd),
-      ]);
-
-    const uniqueTokens = uniq(earnings.map((item) => item.token_address));
-    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
-      this.getTokensDetails(uniqueTokens),
-      this.getTokensExchangeRatesUSD(uniqueTokens),
+        },
+      }),
+      createPoRepActiveProvidersCountQuery(this.queryBuilder, {
+        periodEndEpoch: periodEndEpoch,
+      }).executeTakeFirstOrThrow(),
+      this.getProvidersEarningsUSD(periodStart, periodEnd),
+      this.getPeriodDealsCompliance(periodStart, periodEnd),
     ]);
 
-    const earningsUSD = earnings.reduce((totalUSD, item) => {
-      const tokenExponent =
-        10n ** BigInt(tokensDetails.get(item.token_address).tokenDecimals);
-
-      return totalUSD.add(
-        Decimal(item.net_amount.toString())
-          .div(tokenExponent.toString())
-          .mul(tokensExchangeRatesUSD.get(item.token_address)),
-      );
-    }, Decimal(0));
+    const earningsUSD = [...providersEarningsUSD.values()].reduce(
+      (totalUSD, providerEarningsUSD) => totalUSD.add(providerEarningsUSD),
+      Decimal(0),
+    );
 
     return {
       totalProvidersCount: totalProvidersCount,
@@ -415,7 +399,41 @@ export class PoRepService {
         activeProviders.active_providers_count.toString(),
       ),
       earningsUSD: earningsUSD.toDecimalPlaces(2).toNumber(),
-      averageSla: averageSla,
+      averageSla: this.getAverageSla(dealsCompliance),
+    };
+  }
+
+  public async getProvidersEarningsAgainstSla(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<PoRepProvidersEarningsAgainstSla> {
+    const [providersEarningsUSD, dealsCompliance] = await Promise.all([
+      this.getProvidersEarningsUSD(periodStart, periodEnd),
+      this.getPeriodDealsCompliance(periodStart, periodEnd),
+    ]);
+
+    const providersDealsCompliance = groupBy(
+      dealsCompliance,
+      (item) => item.deal.providerId,
+    );
+    const providersIds = uniq([
+      ...providersEarningsUSD.keys(),
+      ...Object.keys(providersDealsCompliance),
+    ]);
+
+    return {
+      slaTarget: slaTarget,
+      providers: providersIds.map((providerId) => {
+        return {
+          providerId: F0Id.from(providerId).toString(),
+          earningsUSD: (providersEarningsUSD.get(providerId) ?? Decimal(0))
+            .toDecimalPlaces(2)
+            .toNumber(),
+          averageSla: this.getAverageSla(
+            providersDealsCompliance[providerId] ?? [],
+          ),
+        };
+      }),
     };
   }
 
@@ -1006,10 +1024,51 @@ export class PoRepService {
     return history;
   }
 
-  private async getProvidersAverageSla(
+  private async getProvidersEarningsUSD(
     periodStart: DateTime | null,
     periodEnd: DateTime,
-  ): Promise<number | null> {
+  ): Promise<Map<string, PrismaRuntime.Decimal>> {
+    const earnings = await createPoRepProvidersEarningsQuery(
+      this.queryBuilder,
+      {
+        periodStartEpoch:
+          periodStart !== null
+            ? dateToFilecoinBlockHeight(periodStart.toJSDate(), {
+                testnet: this.isTestnet(),
+              })
+            : null,
+        periodEndEpoch: dateToFilecoinBlockHeight(periodEnd.toJSDate(), {
+          testnet: this.isTestnet(),
+        }),
+      },
+    ).execute();
+
+    const uniqueTokens = uniq(earnings.map((item) => item.token_address));
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    return earnings.reduce((providersEarningsUSD, item) => {
+      const providerId = item.provider_id.toString();
+      const tokenExponent =
+        10n ** BigInt(tokensDetails.get(item.token_address).tokenDecimals);
+
+      return providersEarningsUSD.set(
+        providerId,
+        (providersEarningsUSD.get(providerId) ?? Decimal(0)).add(
+          Decimal(item.net_amount.toString())
+            .div(tokenExponent.toString())
+            .mul(tokensExchangeRatesUSD.get(item.token_address)),
+        ),
+      );
+    }, new Map<string, PrismaRuntime.Decimal>());
+  }
+
+  private async getPeriodDealsCompliance(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<DealCompliance[]> {
     const deals = await this.getOnboardedDeals(null, null);
     const periodDeals = deals.filter(
       (deal) =>
@@ -1019,7 +1078,7 @@ export class PoRepService {
           deal.endedAt >= periodStart),
     );
 
-    const dealsCompliance = await Promise.all(
+    return Promise.all(
       periodDeals.map(async (deal) => {
         const from =
           periodStart !== null
@@ -1038,8 +1097,6 @@ export class PoRepService {
         return this.getDealCompliance(deal, measurements, from, to);
       }),
     );
-
-    return this.getAverageSla(dealsCompliance);
   }
 
   private getAverageSla(dealsCompliance: DealCompliance[]): number | null {

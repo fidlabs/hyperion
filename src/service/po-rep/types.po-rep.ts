@@ -547,6 +547,15 @@ export interface PoRepProvidersHistoryEntry {
   activeProvidersCount: number;
 }
 
+export interface PoRepProvidersEarningsAgainstSla {
+  slaTarget: number;
+  providers: {
+    providerId: string;
+    earningsUSD: number;
+    averageSla: number | null;
+  }[];
+}
+
 export interface PoRepProvidersSlaHistoryEntry {
   date: string;
   averageSla: number | null;

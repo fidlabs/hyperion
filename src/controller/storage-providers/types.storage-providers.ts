@@ -1,4 +1,4 @@
-import { ApiProperty, IntersectionType } from '@nestjs/swagger';
+import { ApiProperty, IntersectionType, PickType } from '@nestjs/swagger';
 import { PoRepHistoryParameters } from 'src/service/po-rep/types.po-rep';
 import {
   DashboardPeriod,
@@ -37,6 +37,64 @@ export class StorageProvidersHistoryEntry {
       FINALIZED, EXPIRED or EARLY_TERMINATED state.`,
   })
   activeProvidersCount: DashboardServiceValue;
+}
+
+export class StorageProvidersEarningsAgainstSlaRequest extends PickType(
+  DashboardStatisticsRequest,
+  ['service'],
+) {}
+
+export class StorageProviderEarningsAgainstSla {
+  @ApiProperty({
+    description: 'Provider ID',
+  })
+  providerId: string;
+
+  @ApiProperty({
+    description: 'Service the values are for',
+    enum: ['fcss', 'fwss'],
+  })
+  service: Exclude<DashboardService, 'all'>;
+
+  @ApiProperty({
+    description: 'Net amount settled to the provider in the period, in USD',
+  })
+  earningsUSD: number;
+
+  @ApiProperty({
+    description: `Average SLA of provider deals active in the period, eg.
+      average share of URL Finder measurements in which all SLIs required by
+      the deal were met. Null when none of the deals was measured in the
+      period.`,
+    type: Number,
+    nullable: true,
+  })
+  averageSla: number | null;
+}
+
+export class StorageProvidersEarningsAgainstSla {
+  @ApiProperty({
+    description: 'ISO Datetime of the period start',
+  })
+  periodStart: Date;
+
+  @ApiProperty({
+    description: 'ISO Datetime of the period end',
+  })
+  periodEnd: Date;
+
+  @ApiProperty({
+    description: 'SLA target that providers SLA is compared against',
+  })
+  slaTarget: DashboardServiceValue;
+
+  @ApiProperty({
+    description: `Providers with earnings or deals active in the period, one
+      entry per provider and service`,
+    type: StorageProviderEarningsAgainstSla,
+    isArray: true,
+  })
+  providers: StorageProviderEarningsAgainstSla[];
 }
 
 export class StorageProvidersSlaHistoryEntry {

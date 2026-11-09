@@ -72,13 +72,14 @@ export function createPoRepProvidersEarningsQuery(
     .innerJoin('filecoin_pay_rail as r', 'r.railId', 'p.railId')
     .innerJoin('po_rep_deal as d', 'd.railId', 'p.railId')
     .select((eb) => [
+      'd.providerId as provider_id',
       'r.token as token_address',
       eb.fn.coalesce(eb.fn.sum('p.netPayeeAmount'), eb.val(0)).as('net_amount'),
     ])
     .where('p.oneTime', '=', false)
     .where('p.createdAtBlock', '>', (periodStartEpoch ?? 0).toString())
     .where('p.createdAtBlock', '<=', periodEndEpoch.toString())
-    .groupBy('r.token');
+    .groupBy(['d.providerId', 'r.token']);
 }
 
 export function createPoRepProvidersHistoryQuery(
