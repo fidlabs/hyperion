@@ -48,6 +48,7 @@ export const PO_REP_CONFIG_SCHEMA = z.object({
     .min(0n)
     .max(900n)
     .nullish(),
+  PO_REP_SLA_TARGET: z.coerce.number().min(0).max(1).default(0.95),
 });
 
 export const DEAL_MANIFEST_PIECE_SCHEMA = z.object({

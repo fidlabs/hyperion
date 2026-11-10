@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { groupBy, sumBy, uniq } from 'lodash';
 import { DateTime } from 'luxon';
 import { Prisma as PrismaRuntime } from '../../generated/prisma/client';
@@ -11,7 +12,16 @@ import { createPoRepOnboardedDataHistoryQuery } from 'src/db/queries/po-rep-onbo
 import { createPoRepOnboardedDealsQuery } from 'src/db/queries/po-rep-onboarded-deals.query';
 import { createPoRepProviderEconomicsStatisticsQuery } from 'src/db/queries/po-rep-provider-economics-statistics.query';
 import { createPoRepProviderStorageStatisticsQuery } from 'src/db/queries/po-rep-provider-storage-statistics.query';
-import { PoRepPublicClient, RECENT_NODE_CLIENT } from 'src/po-rep-indexer';
+import {
+  createPoRepActiveProvidersCountQuery,
+  createPoRepProvidersEarningsQuery,
+  createPoRepProvidersHistoryQuery,
+} from 'src/db/queries/po-rep-providers-statistics.query';
+import {
+  PoRepConfig,
+  PoRepPublicClient,
+  RECENT_NODE_CLIENT,
+} from 'src/po-rep-indexer';
 import {
   arrayAverage,
   dateToFilecoinBlockHeight,
@@ -38,9 +48,14 @@ import {
   PoRepDealsValueHistoryEntry,
   PoRepDealsValueHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
+  PoRepHistoryParameters,
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderComplianceStatistics,
   PoRepProviderEconomicsStatistics,
+  PoRepProvidersEarningsAgainstSla,
+  PoRepProvidersHistoryEntry,
+  PoRepProvidersSlaHistoryEntry,
+  PoRepProvidersStatistics,
   PoRepProviderStorageStatistics,
   PoRepSLIComplianceHistoryEntry,
   PoRepSLIComplianceHistoryParameters,
@@ -73,6 +88,11 @@ interface DealCompliance {
   expectedMeasurementsCount: number;
 }
 
+interface DealsComplianceWindow {
+  date: string;
+  dealsCompliance: DealCompliance[];
+}
+
 const Decimal = PrismaRuntime.Decimal;
 
 @Injectable()
@@ -85,6 +105,7 @@ export class PoRepService {
     private readonly recentNodeClient: PoRepPublicClient,
     @InjectQueryBuilder() private readonly queryBuilder: QueryBuilder,
     private readonly urlFinderService: UrlFinderService,
+    private readonly configService: ConfigService<PoRepConfig, true>,
   ) {}
 
   public async getDeals({
@@ -344,6 +365,120 @@ export class PoRepService {
     );
   }
 
+  public async getProvidersStatistics(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<PoRepProvidersStatistics> {
+    const periodEndEpoch = dateToFilecoinBlockHeight(periodEnd.toJSDate(), {
+      testnet: this.isTestnet(),
+    });
+
+    const [
+      totalProvidersCount,
+      activeProviders,
+      providersEarningsUSD,
+      dealsCompliance,
+    ] = await Promise.all([
+      this.prismaService.po_rep_storage_provider.count({
+        where: {
+          registeredAtBlock: {
+            lte: periodEndEpoch,
+          },
+        },
+      }),
+      createPoRepActiveProvidersCountQuery(this.queryBuilder, {
+        periodEndEpoch: periodEndEpoch,
+      }).executeTakeFirstOrThrow(),
+      this.getProvidersEarningsUSD(periodStart, periodEnd),
+      this.getPeriodDealsCompliance(periodStart, periodEnd),
+    ]);
+
+    const earningsUSD = [...providersEarningsUSD.values()].reduce(
+      (totalUSD, providerEarningsUSD) => totalUSD.add(providerEarningsUSD),
+      Decimal(0),
+    );
+
+    return {
+      totalProvidersCount: totalProvidersCount,
+      activeProvidersCount: stringToNumber(
+        activeProviders.active_providers_count.toString(),
+      ),
+      earningsUSD: earningsUSD.toDecimalPlaces(2).toNumber(),
+      averageSla: this.getAverageSla(dealsCompliance),
+    };
+  }
+
+  public async getProvidersEarningsAgainstSla(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<PoRepProvidersEarningsAgainstSla> {
+    const [providersEarningsUSD, dealsCompliance] = await Promise.all([
+      this.getProvidersEarningsUSD(periodStart, periodEnd),
+      this.getPeriodDealsCompliance(periodStart, periodEnd),
+    ]);
+
+    const providersDealsCompliance = groupBy(
+      dealsCompliance,
+      (item) => item.deal.providerId,
+    );
+    const providersIds = uniq([
+      ...providersEarningsUSD.keys(),
+      ...Object.keys(providersDealsCompliance),
+    ]);
+
+    return {
+      slaTarget: this.getSlaTarget(),
+      providers: providersIds.map((providerId) => {
+        return {
+          providerId: F0Id.from(providerId).toString(),
+          earningsUSD: (providersEarningsUSD.get(providerId) ?? Decimal(0))
+            .toDecimalPlaces(2)
+            .toNumber(),
+          averageSla: this.getAverageSla(
+            providersDealsCompliance[providerId] ?? [],
+          ),
+        };
+      }),
+    };
+  }
+
+  public async getProvidersHistory(
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepProvidersHistoryEntry[]> {
+    const results = await createPoRepProvidersHistoryQuery(this.queryBuilder, {
+      genesisTimestamp: getFilecoinGenesisTimestamp({
+        testnet: this.isTestnet(),
+      }),
+      windowSize: windowSize,
+      periodStart: periodStart !== null ? periodStart.toJSDate() : null,
+    }).execute();
+
+    const firstWindowDate =
+      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+
+    return results
+      .map((result) => {
+        return {
+          date: DateTime.fromJSDate(result.window_start, {
+            zone: 'UTC',
+          }).toISODate(),
+          newProvidersCount: stringToNumber(
+            result.new_providers_count.toString(),
+          ),
+          totalProvidersCount: stringToNumber(
+            result.total_providers_count.toString(),
+          ),
+          activeProvidersCount: stringToNumber(
+            result.active_providers_count.toString(),
+          ),
+        };
+      })
+      .filter(
+        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+      );
+  }
+
   public async getDealsPaymentsSummaryHistory({
     netAmounts = 'true',
     providerId = null,
@@ -516,84 +651,63 @@ export class PoRepService {
     PoRepSLIComplianceHistoryEntry[]
   > {
     const deals = await this.getOnboardedDeals(providerId, dealId);
+    const history = await this.getDealsComplianceHistory(deals, windowSize);
 
-    if (deals.length === 0) {
-      return [];
-    }
-
-    const now = DateTime.utc();
-    const dealsMeasurements = await Promise.all(
-      deals.map((deal) =>
-        this.urlFinderService.getDealMeasurements(
-          deal.dealId,
-          deal.onboardedAt,
-          deal.endedAt ?? now,
-        ),
-      ),
-    );
-
-    const entries: PoRepSLIComplianceHistoryEntry[] = [];
-
-    for (
-      let windowStart = DateTime.min(
-        ...deals.map((deal) => deal.onboardedAt),
-      ).startOf(windowSize);
-      windowStart <= now;
-      windowStart = windowStart.plus({ [windowSize]: 1 })
-    ) {
-      const windowEnd = windowStart.plus({ [windowSize]: 1 });
-      const windowDealsCompliance = deals.flatMap((deal, index) => {
-        if (
-          deal.onboardedAt >= windowEnd ||
-          (deal.endedAt !== null && deal.endedAt < windowStart)
-        ) {
-          return [];
-        }
-
-        const windowMeasurements = dealsMeasurements[index].filter(
-          (measurement) => {
-            const testedAt = DateTime.fromISO(measurement.tested_at, {
-              zone: 'UTC',
-            });
-
-            return testedAt >= windowStart && testedAt < windowEnd;
-          },
-        );
-
-        return [
-          this.getDealCompliance(
-            deal,
-            windowMeasurements,
-            windowStart,
-            DateTime.min(windowEnd, now),
-          ),
-        ];
-      });
-
-      entries.push({
-        date: windowStart.toISODate(),
-        averageSla: this.getAverageSla(windowDealsCompliance),
-        measurementsCount: sumBy(windowDealsCompliance, 'measurementsCount'),
+    return history.map(({ date, dealsCompliance }) => {
+      return {
+        date: date,
+        averageSla: this.getAverageSla(dealsCompliance),
+        measurementsCount: sumBy(dealsCompliance, 'measurementsCount'),
         expectedMeasurementsCount: sumBy(
-          windowDealsCompliance,
+          dealsCompliance,
           'expectedMeasurementsCount',
         ),
-        compliant: this.getComplianceStateValues(
-          windowDealsCompliance,
-          'compliant',
-        ),
+        compliant: this.getComplianceStateValues(dealsCompliance, 'compliant'),
         nonCompliant: this.getComplianceStateValues(
-          windowDealsCompliance,
+          dealsCompliance,
           'nonCompliant',
         ),
-        unknown: this.getComplianceStateValues(
-          windowDealsCompliance,
-          'unknown',
-        ),
-      });
-    }
+        unknown: this.getComplianceStateValues(dealsCompliance, 'unknown'),
+      };
+    });
+  }
 
-    return entries;
+  public async getProvidersSlaHistory(
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepProvidersSlaHistoryEntry[]> {
+    const slaTarget = this.getSlaTarget();
+    const deals = await this.getOnboardedDeals(null, null);
+    const history = await this.getDealsComplianceHistory(
+      deals,
+      windowSize,
+      periodStart,
+    );
+
+    return history.map(({ date, dealsCompliance }) => {
+      const providersSla = Object.values(
+        groupBy(dealsCompliance, (item) => item.deal.providerId),
+      )
+        .map((providerDealsCompliance) =>
+          this.getAverageSla(providerDealsCompliance),
+        )
+        .filter((sla) => sla !== null);
+      const providersBelowTargetCount = providersSla.filter(
+        (sla) => sla < slaTarget,
+      ).length;
+
+      return {
+        date: date,
+        averageSla: this.getAverageSla(dealsCompliance),
+        slaTarget: slaTarget,
+        providersBelowTargetCount: providersBelowTargetCount,
+        providersBelowTargetPercentage: safeDiv(
+          providersBelowTargetCount,
+          providersSla.length,
+          null,
+        ),
+      };
+    });
   }
 
   public async getDealsDoneCountUpToDate(upToDate?: Date): Promise<number> {
@@ -838,6 +952,171 @@ export class PoRepService {
     }
 
     return measuredSliPairs.length === requiredSliPairs.length ? true : null;
+  }
+
+  private async getDealsComplianceHistory(
+    deals: OnboardedDeal[],
+    windowSize: PoRepHistoryParameters['windowSize'],
+    periodStart: DateTime | null = null,
+  ): Promise<DealsComplianceWindow[]> {
+    if (deals.length === 0) {
+      return [];
+    }
+
+    const now = DateTime.utc();
+    const firstOnboardedAt = DateTime.min(
+      ...deals.map((deal) => deal.onboardedAt),
+    );
+    const firstWindowStart = (
+      periodStart !== null
+        ? DateTime.max(firstOnboardedAt, periodStart)
+        : firstOnboardedAt
+    ).startOf(windowSize);
+    const historyDeals = deals.filter(
+      (deal) => deal.endedAt === null || deal.endedAt >= firstWindowStart,
+    );
+    const dealsMeasurements = await Promise.all(
+      historyDeals.map((deal) =>
+        this.urlFinderService.getDealMeasurements(
+          deal.dealId,
+          DateTime.max(deal.onboardedAt, firstWindowStart),
+          deal.endedAt ?? now,
+        ),
+      ),
+    );
+
+    const history: DealsComplianceWindow[] = [];
+
+    for (
+      let windowStart = firstWindowStart;
+      windowStart <= now;
+      windowStart = windowStart.plus({ [windowSize]: 1 })
+    ) {
+      const windowEnd = windowStart.plus({ [windowSize]: 1 });
+      const windowDealsCompliance = historyDeals.flatMap((deal, index) => {
+        if (
+          deal.onboardedAt >= windowEnd ||
+          (deal.endedAt !== null && deal.endedAt < windowStart)
+        ) {
+          return [];
+        }
+
+        const windowMeasurements = dealsMeasurements[index].filter(
+          (measurement) => {
+            const testedAt = DateTime.fromISO(measurement.tested_at, {
+              zone: 'UTC',
+            });
+
+            return testedAt >= windowStart && testedAt < windowEnd;
+          },
+        );
+
+        return [
+          this.getDealCompliance(
+            deal,
+            windowMeasurements,
+            windowStart,
+            DateTime.min(windowEnd, now),
+          ),
+        ];
+      });
+
+      history.push({
+        date: windowStart.toISODate(),
+        dealsCompliance: windowDealsCompliance,
+      });
+    }
+
+    return history;
+  }
+
+  private async getProvidersEarningsUSD(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<Map<string, PrismaRuntime.Decimal>> {
+    const earnings = await createPoRepProvidersEarningsQuery(
+      this.queryBuilder,
+      {
+        periodStartEpoch:
+          periodStart !== null
+            ? dateToFilecoinBlockHeight(periodStart.toJSDate(), {
+                testnet: this.isTestnet(),
+              })
+            : null,
+        periodEndEpoch: dateToFilecoinBlockHeight(periodEnd.toJSDate(), {
+          testnet: this.isTestnet(),
+        }),
+      },
+    ).execute();
+
+    const uniqueTokens = uniq(earnings.map((item) => item.token_address));
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    return earnings.reduce((providersEarningsUSD, item) => {
+      const providerId = item.provider_id.toString();
+      const tokenDetails = tokensDetails.get(item.token_address);
+      const tokenExchangeRateUSD = tokensExchangeRatesUSD.get(
+        item.token_address,
+      );
+
+      if (!tokenDetails || !tokenExchangeRateUSD) {
+        throw new Error(
+          `Exchange rate or info not found for token "${item.token_address}"`,
+        );
+      }
+
+      const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
+
+      return providersEarningsUSD.set(
+        providerId,
+        (providersEarningsUSD.get(providerId) ?? Decimal(0)).add(
+          Decimal(item.net_amount.toString())
+            .div(tokenExponent.toString())
+            .mul(tokenExchangeRateUSD),
+        ),
+      );
+    }, new Map<string, PrismaRuntime.Decimal>());
+  }
+
+  private async getPeriodDealsCompliance(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<DealCompliance[]> {
+    const deals = await this.getOnboardedDeals(null, null);
+    const periodDeals = deals.filter(
+      (deal) =>
+        deal.onboardedAt < periodEnd &&
+        (periodStart === null ||
+          deal.endedAt === null ||
+          deal.endedAt >= periodStart),
+    );
+
+    return Promise.all(
+      periodDeals.map(async (deal) => {
+        const from =
+          periodStart !== null
+            ? DateTime.max(periodStart, deal.onboardedAt)
+            : deal.onboardedAt;
+        const to =
+          deal.endedAt !== null
+            ? DateTime.min(periodEnd, deal.endedAt)
+            : periodEnd;
+        const measurements = await this.urlFinderService.getDealMeasurements(
+          deal.dealId,
+          from,
+          to,
+        );
+
+        return this.getDealCompliance(deal, measurements, from, to);
+      }),
+    );
+  }
+
+  private getSlaTarget(): number {
+    return this.configService.get('PO_REP_SLA_TARGET', { infer: true });
   }
 
   private getAverageSla(dealsCompliance: DealCompliance[]): number | null {

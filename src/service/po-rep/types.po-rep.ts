@@ -533,6 +533,37 @@ export class PoRepProviderStorageStatistics {
   onboardedBytes: bigint;
 }
 
+export interface PoRepProvidersStatistics {
+  totalProvidersCount: number;
+  activeProvidersCount: number;
+  earningsUSD: number;
+  averageSla: number | null;
+}
+
+export interface PoRepProvidersHistoryEntry {
+  date: string;
+  newProvidersCount: number;
+  totalProvidersCount: number;
+  activeProvidersCount: number;
+}
+
+export interface PoRepProvidersEarningsAgainstSla {
+  slaTarget: number;
+  providers: {
+    providerId: string;
+    earningsUSD: number;
+    averageSla: number | null;
+  }[];
+}
+
+export interface PoRepProvidersSlaHistoryEntry {
+  date: string;
+  averageSla: number | null;
+  slaTarget: number;
+  providersBelowTargetCount: number;
+  providersBelowTargetPercentage: number | null;
+}
+
 export class PoRepProviderEconomicsStatistics {
   @ApiProperty({
     description:
