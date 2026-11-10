@@ -830,13 +830,13 @@ export class PoRepClientDealsHistoryEntry {
   date: string;
 
   @ApiProperty({
-    description: 'Count of deals proposed by the client in the window',
+    description: 'Count of deals created by the client in the window',
   })
   dealsCount: number;
 
   @ApiProperty({
     description:
-      'Cumulative count of deals proposed by the client up to the window end',
+      'Cumulative count of deals created by the client up to the window end',
   })
   cumulativeDealsCount: number;
 }
@@ -875,14 +875,21 @@ export class PoRepClient {
   dealsCount: number;
 
   @ApiProperty({
-    description: `ISO Datetime of the first deal proposal made by client`,
+    description: `ISO Datetime of the first client deal reaching
+      ${PoRepDealState.ACTIVE} state, eg. payment rail activation. Null when
+      none of the client deals was onboarded yet.`,
+    type: Date,
+    nullable: true,
   })
-  @Transform(({ value }) => (value as Date).toISOString())
-  firstDealAt: Date;
+  @Transform(({ value }) =>
+    value !== null ? (value as Date).toISOString() : null,
+  )
+  firstOnboardedAt: Date | null;
 
   @ApiProperty({
-    description: `Average SLA of client deals, eg. percentage of the contract
-      met. Null until SLA data is available.`,
+    description: `Average SLA of client deals active in the last 30 days, eg.
+      average share of URL Finder measurements in which all SLIs required by
+      the deal were met. Null when none of the deals was measured.`,
     type: Number,
     nullable: true,
   })
@@ -897,4 +904,82 @@ export class PoRepClient {
   constructor(client: PoRepClient) {
     Object.assign(this, client);
   }
+}
+
+export class PoRepClientSlaHistoryEntry {
+  @ApiProperty({
+    description: 'Window start ISO date (UTC)',
+  })
+  date: string;
+
+  @ApiProperty({
+    description: `Average SLA of client deals active in the window, eg. average
+      share of URL Finder measurements in which all SLIs required by the deal
+      were met. Null when none of the deals was measured in the window.`,
+    type: Number,
+    nullable: true,
+  })
+  averageSla: number | null;
+
+  @ApiProperty({
+    description: 'SLA target that client deals SLA is compared against',
+  })
+  slaTarget: number;
+
+  @ApiProperty({
+    description: `Count of client deals with SLA below the target in the
+      window. Deals without measurements in the window are not included.`,
+  })
+  dealsBelowTargetCount: number;
+
+  @ApiProperty({
+    description: `Percentage of client deals measured in the window with SLA
+      below the target. Null when none of the deals was measured in the
+      window.`,
+    type: Number,
+    nullable: true,
+  })
+  dealsBelowTargetPercentage: number | null;
+}
+
+export class PoRepClientDealSla {
+  @ApiProperty({
+    description: 'Deal ID',
+  })
+  dealId: string;
+
+  @ApiProperty({
+    description: 'Provider ID',
+  })
+  providerId: string;
+
+  @ApiProperty({
+    description: 'Current deal state',
+    enum: PoRepDealState,
+    enumName: 'PoRepDealState',
+  })
+  state: PoRepDealState;
+
+  @ApiProperty({
+    description: `Average SLA of the deal in the last 30 days, eg. share of URL
+      Finder measurements in which all SLIs required by the deal were met.
+      Null when the deal was not active or not measured in the last 30 days.`,
+    type: Number,
+    nullable: true,
+  })
+  averageSla: number | null;
+}
+
+export class PoRepClientDealsSla {
+  @ApiProperty({
+    description: 'SLA target that client deals SLA is compared against',
+  })
+  slaTarget: number;
+
+  @ApiProperty({
+    description: 'All client deals, latest first',
+    type: PoRepClientDealSla,
+    isArray: true,
+  })
+  deals: PoRepClientDealSla[];
 }

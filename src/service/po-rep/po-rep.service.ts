@@ -47,6 +47,8 @@ import {
   DealRailState,
   PoRepClient,
   PoRepClientDealsHistoryEntry,
+  PoRepClientDealsSla,
+  PoRepClientSlaHistoryEntry,
   PoRepComplianceState,
   PoRepDeal,
   PoRepDealsList,
@@ -57,7 +59,6 @@ import {
   PoRepDealsValueHistoryParameters,
   PoRepHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
-  PoRepHistoryParameters,
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderComplianceStatistics,
   PoRepProviderEconomicsStatistics,
@@ -724,12 +725,13 @@ export class PoRepService {
 
   public async getClient(clientAddress: string): Promise<PoRepClient | null> {
     const address = getAddress(clientAddress);
-    const fromEpoch = dateToFilecoinBlockHeight(
-      DateTime.utc().minus({ days: 30 }).toJSDate(),
-      { testnet: this.isTestnet() },
-    );
+    const to = DateTime.utc();
+    const from = to.minus({ days: 30 });
+    const fromEpoch = dateToFilecoinBlockHeight(from.toJSDate(), {
+      testnet: this.isTestnet(),
+    });
 
-    const [statistics, spend] = await Promise.all([
+    const [statistics, spend, dealsCompliance] = await Promise.all([
       createPoRepClientStatisticsQuery(this.queryBuilder, {
         clientAddress: address,
       }).executeTakeFirst(),
@@ -737,6 +739,7 @@ export class PoRepService {
         clientAddress: address,
         fromEpoch: fromEpoch,
       }).execute(),
+      this.getPeriodDealsCompliance(from, to, address),
     ]);
 
     if (!statistics) {
@@ -770,14 +773,18 @@ export class PoRepService {
         fwss: null,
       },
       dealsCount: stringToNumber(statistics.deals_count.toString()),
-      firstDealAt: this.epochToDate(BigInt(statistics.first_deal_epoch)),
-      averageSla: null,
+      firstOnboardedAt:
+        statistics.first_onboarded_epoch !== null
+          ? this.epochToDate(BigInt(statistics.first_onboarded_epoch))
+          : null,
+      averageSla: this.getAverageSla(dealsCompliance),
       spendLast30DaysUSD: spendLast30DaysUSD,
     });
   }
 
   public async getClientDealsHistory(
     clientAddress: string,
+    periodStart: DateTime | null,
     windowSize: PoRepHistoryParameters['windowSize'],
   ): Promise<PoRepClientDealsHistoryEntry[]> {
     const results = await createPoRepClientDealsHistoryQuery(
@@ -788,20 +795,103 @@ export class PoRepService {
           testnet: this.isTestnet(),
         }),
         windowSize: windowSize,
+        periodStart: periodStart !== null ? periodStart.toJSDate() : null,
       },
     ).execute();
 
-    return results.map((result) => {
+    const firstWindowDate =
+      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+
+    return results
+      .map((result) => {
+        return {
+          date: DateTime.fromJSDate(result.window_start, {
+            zone: 'UTC',
+          }).toISODate(),
+          dealsCount: stringToNumber(result.window_total.toString()),
+          cumulativeDealsCount: stringToNumber(
+            result.cumulative_total.toString(),
+          ),
+        };
+      })
+      .filter(
+        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+      );
+  }
+
+  public async getClientSlaHistory(
+    clientAddress: string,
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepClientSlaHistoryEntry[]> {
+    const slaTarget = this.getSlaTarget();
+    const deals = await this.getOnboardedDeals(
+      null,
+      null,
+      getAddress(clientAddress),
+    );
+    const history = await this.getDealsComplianceHistory(
+      deals,
+      windowSize,
+      periodStart,
+    );
+
+    return history.map(({ date, dealsCompliance }) => {
+      const dealsSla = dealsCompliance
+        .map((item) => item.sla)
+        .filter((sla) => sla !== null);
+      const dealsBelowTargetCount = dealsSla.filter(
+        (sla) => sla < slaTarget,
+      ).length;
+
       return {
-        date: DateTime.fromJSDate(result.window_start, {
-          zone: 'UTC',
-        }).toISODate(),
-        dealsCount: stringToNumber(result.window_total.toString()),
-        cumulativeDealsCount: stringToNumber(
-          result.cumulative_total.toString(),
+        date: date,
+        averageSla: this.getAverageSla(dealsCompliance),
+        slaTarget: slaTarget,
+        dealsBelowTargetCount: dealsBelowTargetCount,
+        dealsBelowTargetPercentage: safeDiv(
+          dealsBelowTargetCount,
+          dealsSla.length,
+          null,
         ),
       };
     });
+  }
+
+  public async getClientDealsSla(
+    clientAddress: string,
+  ): Promise<PoRepClientDealsSla> {
+    const address = getAddress(clientAddress);
+    const to = DateTime.utc();
+    const from = to.minus({ days: 30 });
+
+    const [deals, dealsCompliance] = await Promise.all([
+      this.prismaService.po_rep_deal.findMany({
+        where: {
+          client: address,
+        },
+        orderBy: {
+          dealId: 'desc',
+        },
+      }),
+      this.getPeriodDealsCompliance(from, to, address),
+    ]);
+
+    const dealsSla = new Map(
+      dealsCompliance.map((item) => [item.deal.dealId, item.sla]),
+    );
+
+    return {
+      slaTarget: this.getSlaTarget(),
+      deals: deals.map((deal) => {
+        return {
+          dealId: deal.dealId.toString(),
+          providerId: F0Id.from(deal.providerId).toString(),
+          state: deal.state,
+          averageSla: dealsSla.get(deal.dealId) ?? null,
+        };
+      }),
+    };
   }
 
   public async getDealsDoneCountUpToDate(upToDate?: Date): Promise<number> {
@@ -933,10 +1023,12 @@ export class PoRepService {
   private async getOnboardedDeals(
     providerId: F0IdInput | null,
     dealId: string | null,
+    clientAddress: string | null = null,
   ): Promise<OnboardedDeal[]> {
     const results = await createPoRepOnboardedDealsQuery(this.queryBuilder, {
       providersIds: providerId,
       dealsIds: dealId,
+      clientsAddresses: clientAddress,
     }).execute();
 
     return results.map((result) => ({
@@ -1178,8 +1270,9 @@ export class PoRepService {
   private async getPeriodDealsCompliance(
     periodStart: DateTime | null,
     periodEnd: DateTime,
+    clientAddress: string | null = null,
   ): Promise<DealCompliance[]> {
-    const deals = await this.getOnboardedDeals(null, null);
+    const deals = await this.getOnboardedDeals(null, null, clientAddress);
     const periodDeals = deals.filter(
       (deal) =>
         deal.onboardedAt < periodEnd &&
