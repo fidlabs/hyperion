@@ -35,7 +35,7 @@ export function createFilecoinPayRailsQuery(qb: QueryBuilder) {
         .case()
         .when('r.activatedAtBlock', '=', '0')
         .then(null)
-        .else('r.activatedAtBlock')
+        .else(eb.ref('r.activatedAtBlock'))
         .end()
         .as('rail_activated_at_epoch'),
       eb.fn
