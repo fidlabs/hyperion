@@ -15,6 +15,7 @@ export interface CreatePoRepClientSpendQueryParameters extends CreatePoRepClient
 export interface CreatePoRepClientDealsHistoryQueryParameters extends CreatePoRepClientQueryParameters {
   genesisTimestamp: number | bigint;
   windowSize: 'day' | 'week' | 'month';
+  periodStart: Date | null;
 }
 
 export function createPoRepClientStatisticsQuery(
@@ -25,7 +26,7 @@ export function createPoRepClientStatisticsQuery(
     .select((eb) => [
       'client_address',
       eb.fn.count('deal_id').as('deals_count'),
-      eb.fn.min('deal_created_at_epoch').as('first_deal_epoch'),
+      eb.fn.min('rail_activated_at_epoch').as('first_onboarded_epoch'),
     ])
     .groupBy('client_address');
 }
@@ -56,16 +57,20 @@ export function createPoRepClientDealsHistoryQuery(
     clientAddress,
     genesisTimestamp,
     windowSize,
+    periodStart,
   }: CreatePoRepClientDealsHistoryQueryParameters,
 ) {
   const boundsCTE = qb
     .selectFrom('po_rep_deal')
     .select((eb) => [
       truncateToWindowSize(
-        filecoinBlockNumberToTimestamp({
-          blockNumber: eb.fn.min('proposedAtBlock'),
-          genesisTimestamp: genesisTimestamp,
-        }),
+        eb.fn<Date>('least', [
+          filecoinBlockNumberToTimestamp({
+            blockNumber: eb.fn.min('proposedAtBlock'),
+            genesisTimestamp: genesisTimestamp,
+          }),
+          eb.val(periodStart),
+        ]),
         windowSize,
       ).as('start_window'),
       truncateToWindowSize(eb.fn<Date>('now'), windowSize).as('end_window'),
