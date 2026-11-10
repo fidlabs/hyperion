@@ -19,14 +19,15 @@ import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
   PoRepClient,
   PoRepClientDealsHistoryEntry,
+  PoRepClientDealsSla,
   PoRepClientParameters,
+  PoRepClientSlaHistoryEntry,
   PoRepDealsList,
   PoRepDealsListParameters,
   PoRepDealsPaymentsHistoryEntry,
   PoRepDealsPaymentsHistoryParameters,
   PoRepDealsValueHistoryEntry,
   PoRepDealsValueHistoryParameters,
-  PoRepHistoryParameters,
   PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderComplianceStatistics,
@@ -34,7 +35,10 @@ import {
   PoRepSLIComplianceHistoryParameters,
 } from 'src/service/po-rep/types.po-rep';
 import { ControllerBase } from '../base/controller-base';
-import { PoRepProviderResourceParameters } from './types.po-rep';
+import {
+  PoRepClientHistoryParameters,
+  PoRepProviderResourceParameters,
+} from './types.po-rep';
 
 @Controller('po-rep')
 @CacheTTL(1000 * 60 * 30) // 30 minutes
@@ -175,7 +179,8 @@ export class PoRepController extends ControllerBase {
 
   @Get('/clients/:clientAddress/deals-history')
   @ApiOperation({
-    summary: 'Get the history of deals proposed by PoRep market client',
+    summary:
+      'Get the history of deals created by PoRep market client, starting from the period start',
   })
   @ApiOkResponse({
     type: [PoRepClientDealsHistoryEntry],
@@ -185,8 +190,53 @@ export class PoRepController extends ControllerBase {
   })
   public getClientDealsHistory(
     @Param() { clientAddress }: PoRepClientParameters,
-    @Query() { windowSize = 'day' }: PoRepHistoryParameters,
+    @Query()
+    { period = '30d', windowSize = 'day' }: PoRepClientHistoryParameters,
   ): Promise<PoRepClientDealsHistoryEntry[]> {
-    return this.poRepService.getClientDealsHistory(clientAddress, windowSize);
+    return this.poRepService.getClientDealsHistory(
+      clientAddress,
+      this.getDashboardPeriods(period).current.periodStart,
+      windowSize,
+    );
+  }
+
+  @Get('/clients/:clientAddress/sla-history')
+  @ApiOperation({
+    summary:
+      'Get the history of PoRep market client deals average SLA and share of deals below the SLA target, starting from the period start',
+  })
+  @ApiOkResponse({
+    type: [PoRepClientSlaHistoryEntry],
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid client address or query parameters',
+  })
+  public getClientSlaHistory(
+    @Param() { clientAddress }: PoRepClientParameters,
+    @Query()
+    { period = '30d', windowSize = 'day' }: PoRepClientHistoryParameters,
+  ): Promise<PoRepClientSlaHistoryEntry[]> {
+    return this.poRepService.getClientSlaHistory(
+      clientAddress,
+      this.getDashboardPeriods(period).current.periodStart,
+      windowSize,
+    );
+  }
+
+  @Get('/clients/:clientAddress/deals-sla')
+  @ApiOperation({
+    summary:
+      'Get PoRep market client deals with their average SLA in the last 30 days',
+  })
+  @ApiOkResponse({
+    type: PoRepClientDealsSla,
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid client address',
+  })
+  public getClientDealsSla(
+    @Param() { clientAddress }: PoRepClientParameters,
+  ): Promise<PoRepClientDealsSla> {
+    return this.poRepService.getClientDealsSla(clientAddress);
   }
 }

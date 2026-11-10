@@ -8,6 +8,7 @@ type F0IdLike = Parameters<typeof F0Id.from>[0];
 export interface CreatePoRepOnboardedDealsQueryParameters {
   providersIds?: F0IdLike | F0IdLike[] | null;
   dealsIds?: string | string[] | null;
+  clientsAddresses?: string | string[] | null;
 }
 
 const endedDealStates = [
@@ -22,7 +23,11 @@ function mapF0IdLike(input: F0IdLike): string {
 
 export function createPoRepOnboardedDealsQuery(
   qb: QueryBuilder,
-  { providersIds, dealsIds }: CreatePoRepOnboardedDealsQueryParameters = {},
+  {
+    providersIds,
+    dealsIds,
+    clientsAddresses,
+  }: CreatePoRepOnboardedDealsQueryParameters = {},
 ) {
   return qb
     .selectFrom('po_rep_deal as d')
@@ -52,5 +57,8 @@ export function createPoRepOnboardedDealsQuery(
       ),
     )
     .where((eb) => createGenericStringFilter(eb.ref('d.dealId'), dealsIds))
+    .where((eb) =>
+      createGenericStringFilter(eb.ref('d.client'), clientsAddresses),
+    )
     .groupBy(['d.dealId', 'dr.dealId', 'r.railId']);
 }
