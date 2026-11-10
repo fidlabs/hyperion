@@ -148,12 +148,12 @@ export class StorageProvidersController extends ControllerBase {
     return fcss.map((entry) => {
       return {
         date: entry.date,
-        averageSla: this.fcssOnly(entry.averageSla),
-        slaTarget: this.fcssOnly(entry.slaTarget),
-        providersBelowTargetCount: this.fcssOnly(
+        averageSla: this.fcssOnlyWithoutTotal(entry.averageSla),
+        slaTarget: this.fcssOnlyWithoutTotal(entry.slaTarget),
+        providersBelowTargetCount: this.fcssOnlyWithoutTotal(
           entry.providersBelowTargetCount,
         ),
-        providersBelowTargetPercentage: this.fcssOnly(
+        providersBelowTargetPercentage: this.fcssOnlyWithoutTotal(
           entry.providersBelowTargetPercentage,
         ),
       };
@@ -188,7 +188,7 @@ export class StorageProvidersController extends ControllerBase {
     return {
       periodStart: periodStart.toJSDate(),
       periodEnd: periodEnd.toJSDate(),
-      slaTarget: this.fcssOnly(fcss.slaTarget),
+      slaTarget: this.fcssOnlyWithoutTotal(fcss.slaTarget),
       providers: fcss.providers.map((provider) => {
         return {
           ...provider,
@@ -213,7 +213,7 @@ export class StorageProvidersController extends ControllerBase {
       totalProvidersCount: this.fcssOnly(fcss.totalProvidersCount),
       activeProvidersCount: this.fcssOnly(fcss.activeProvidersCount),
       earningsUSD: this.fcssOnly(fcss.earningsUSD),
-      averageSla: this.fcssOnly(fcss.averageSla),
+      averageSla: this.fcssOnlyWithoutTotal(fcss.averageSla),
     };
   }
 
@@ -228,6 +228,14 @@ export class StorageProvidersController extends ControllerBase {
   private fcssOnly(value: number | null): DashboardServiceValue {
     return {
       total: value,
+      fcss: value,
+      fwss: null,
+    };
+  }
+
+  private fcssOnlyWithoutTotal(value: number | null): DashboardServiceValue {
+    return {
+      total: null,
       fcss: value,
       fwss: null,
     };

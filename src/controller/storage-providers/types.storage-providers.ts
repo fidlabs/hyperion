@@ -84,7 +84,8 @@ export class StorageProvidersEarningsAgainstSla {
   periodEnd: Date;
 
   @ApiProperty({
-    description: 'SLA target that providers SLA is compared against',
+    description: `SLA target that providers SLA is compared against. Total is
+      always null, as services SLA can not be combined.`,
   })
   slaTarget: DashboardServiceValue;
 
@@ -106,25 +107,29 @@ export class StorageProvidersSlaHistoryEntry {
   @ApiProperty({
     description: `Average SLA of deals active in the window, eg. average share
       of URL Finder measurements in which all SLIs required by the deal were
-      met. Null when none of the deals was measured in the window.`,
+      met. Null when none of the deals was measured in the window. Total is
+      always null, as services SLA can not be combined.`,
   })
   averageSla: DashboardServiceValue;
 
   @ApiProperty({
-    description: 'SLA target that providers SLA is compared against',
+    description: `SLA target that providers SLA is compared against. Total is
+      always null, as services SLA can not be combined.`,
   })
   slaTarget: DashboardServiceValue;
 
   @ApiProperty({
     description: `Count of providers with SLA below the target in the window.
       Provider SLA is the average SLA of its deals active in the window.
-      Providers without measurements in the window are not included.`,
+      Providers without measurements in the window are not included. Total is
+      always null, as services SLA can not be combined.`,
   })
   providersBelowTargetCount: DashboardServiceValue;
 
   @ApiProperty({
     description: `Percentage of providers measured in the window with SLA below
-      the target. Null when none of the providers was measured in the window.`,
+      the target. Null when none of the providers was measured in the window.
+      Total is always null, as services SLA can not be combined.`,
   })
   providersBelowTargetPercentage: DashboardServiceValue;
 }
@@ -163,7 +168,8 @@ export class StorageProvidersPeriodStatistics {
   @ApiProperty({
     description: `Average SLA of deals active in the period, eg. average share
       of URL Finder measurements in which all SLIs required by the deal were
-      met. Null when none of the deals was measured in the period.`,
+      met. Null when none of the deals was measured in the period. Total is
+      always null, as services SLA can not be combined.`,
   })
   averageSla: DashboardServiceValue;
 }

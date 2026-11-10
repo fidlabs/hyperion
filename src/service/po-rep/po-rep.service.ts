@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { groupBy, sumBy, uniq } from 'lodash';
 import { DateTime } from 'luxon';
 import { Prisma as PrismaRuntime } from '../../generated/prisma/client';
@@ -16,7 +17,11 @@ import {
   createPoRepProvidersEarningsQuery,
   createPoRepProvidersHistoryQuery,
 } from 'src/db/queries/po-rep-providers-statistics.query';
-import { PoRepPublicClient, RECENT_NODE_CLIENT } from 'src/po-rep-indexer';
+import {
+  PoRepConfig,
+  PoRepPublicClient,
+  RECENT_NODE_CLIENT,
+} from 'src/po-rep-indexer';
 import {
   arrayAverage,
   dateToFilecoinBlockHeight,
@@ -89,7 +94,6 @@ interface DealsComplianceWindow {
 }
 
 const Decimal = PrismaRuntime.Decimal;
-const slaTarget = 0.95;
 
 @Injectable()
 export class PoRepService {
@@ -101,6 +105,7 @@ export class PoRepService {
     private readonly recentNodeClient: PoRepPublicClient,
     @InjectQueryBuilder() private readonly queryBuilder: QueryBuilder,
     private readonly urlFinderService: UrlFinderService,
+    private readonly configService: ConfigService<PoRepConfig, true>,
   ) {}
 
   public async getDeals({
@@ -422,7 +427,7 @@ export class PoRepService {
     ]);
 
     return {
-      slaTarget: slaTarget,
+      slaTarget: this.getSlaTarget(),
       providers: providersIds.map((providerId) => {
         return {
           providerId: F0Id.from(providerId).toString(),
@@ -671,6 +676,7 @@ export class PoRepService {
     periodStart: DateTime | null,
     windowSize: PoRepHistoryParameters['windowSize'],
   ): Promise<PoRepProvidersSlaHistoryEntry[]> {
+    const slaTarget = this.getSlaTarget();
     const deals = await this.getOnboardedDeals(null, null);
     const history = await this.getDealsComplianceHistory(
       deals,
@@ -1051,15 +1057,25 @@ export class PoRepService {
 
     return earnings.reduce((providersEarningsUSD, item) => {
       const providerId = item.provider_id.toString();
-      const tokenExponent =
-        10n ** BigInt(tokensDetails.get(item.token_address).tokenDecimals);
+      const tokenDetails = tokensDetails.get(item.token_address);
+      const tokenExchangeRateUSD = tokensExchangeRatesUSD.get(
+        item.token_address,
+      );
+
+      if (!tokenDetails || !tokenExchangeRateUSD) {
+        throw new Error(
+          `Exchange rate or info not found for token "${item.token_address}"`,
+        );
+      }
+
+      const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
 
       return providersEarningsUSD.set(
         providerId,
         (providersEarningsUSD.get(providerId) ?? Decimal(0)).add(
           Decimal(item.net_amount.toString())
             .div(tokenExponent.toString())
-            .mul(tokensExchangeRatesUSD.get(item.token_address)),
+            .mul(tokenExchangeRateUSD),
         ),
       );
     }, new Map<string, PrismaRuntime.Decimal>());
@@ -1097,6 +1113,10 @@ export class PoRepService {
         return this.getDealCompliance(deal, measurements, from, to);
       }),
     );
+  }
+
+  private getSlaTarget(): number {
+    return this.configService.get('PO_REP_SLA_TARGET', { infer: true });
   }
 
   private getAverageSla(dealsCompliance: DealCompliance[]): number | null {
