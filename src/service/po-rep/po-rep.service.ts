@@ -5,6 +5,11 @@ import { DateTime } from 'luxon';
 import { Prisma as PrismaRuntime } from '../../generated/prisma/client';
 import { InjectQueryBuilder, QueryBuilder } from 'src/db';
 import { PrismaService } from 'src/db/prisma.service';
+import {
+  createPoRepClientDealsHistoryQuery,
+  createPoRepClientSpendQuery,
+  createPoRepClientStatisticsQuery,
+} from 'src/db/queries/po-rep-clients.query';
 import { createPoRepDealsPaymentsHistoryQuery } from 'src/db/queries/po-rep-deals-payments-history.query';
 import { createPoRepDealsValueHistoryQuery } from 'src/db/queries/po-rep-deals-value-history.query';
 import { createPoRepDealsQuery } from 'src/db/queries/po-rep-deals.query';
@@ -33,12 +38,17 @@ import {
   stringToNumber,
 } from 'src/utils/utils';
 import { F0IdInput } from 'src/utils/validators';
+import { getAddress } from 'viem';
 import { filecoinCalibration } from 'viem/chains';
 import { PoRepPriceOracleService } from '../po-rep-price-oracle/po-rep-price-oracle.service';
 import { UrlFinderDealMeasurement } from '../url-finder/types.url-finder';
 import { UrlFinderService } from '../url-finder/url-finder.service';
 import {
   DealRailState,
+  PoRepClient,
+  PoRepClientDealsHistoryEntry,
+  PoRepClientDealsSla,
+  PoRepClientSlaHistoryEntry,
   PoRepComplianceState,
   PoRepDeal,
   PoRepDealsList,
@@ -47,8 +57,8 @@ import {
   PoRepDealsPaymentsHistoryParameters,
   PoRepDealsValueHistoryEntry,
   PoRepDealsValueHistoryParameters,
-  PoRepOnboardedDataHistoryEntry,
   PoRepHistoryParameters,
+  PoRepOnboardedDataHistoryEntry,
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderComplianceStatistics,
   PoRepProviderEconomicsStatistics,
@@ -110,6 +120,7 @@ export class PoRepService {
 
   public async getDeals({
     providerId = null,
+    clientAddress = null,
     railState = null,
     pieceCid = null,
     activeOnly,
@@ -120,6 +131,8 @@ export class PoRepService {
   }: PoRepDealsListParameters): Promise<PoRepDealsList> {
     let baseQuery = createPoRepDealsQuery(this.queryBuilder, {
       providersIds: providerId,
+      clientsAddresses:
+        clientAddress !== null ? getAddress(clientAddress) : null,
       railStates: railState,
       activeOnly: Boolean(stringToBool(activeOnly)),
     });
@@ -710,6 +723,213 @@ export class PoRepService {
     });
   }
 
+  public async getClient(clientAddress: string): Promise<PoRepClient | null> {
+    const address = getAddress(clientAddress);
+    const to = DateTime.utc();
+    const from = to.minus({ days: 30 });
+    const fromEpoch = dateToFilecoinBlockHeight(from.toJSDate(), {
+      testnet: this.isTestnet(),
+    });
+
+    const statistics = await createPoRepClientStatisticsQuery(
+      this.queryBuilder,
+      {
+        clientAddress: address,
+      },
+    ).executeTakeFirst();
+
+    if (!statistics) {
+      return null;
+    }
+
+    const [spend, dealsCompliance] = await Promise.all([
+      createPoRepClientSpendQuery(this.queryBuilder, {
+        clientAddress: address,
+        fromEpoch: fromEpoch,
+      }).execute(),
+      this.getPeriodDealsCompliance(from, to, address),
+    ]);
+
+    const uniqueTokens = uniq(spend.map((item) => item.token_address));
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    const spendLast30DaysUSD = spend
+      .reduce((totalUSD, item) => {
+        const tokenDetails = tokensDetails.get(item.token_address);
+        const tokenExchangeRateUSD = tokensExchangeRatesUSD.get(
+          item.token_address,
+        );
+
+        if (!tokenDetails || !tokenExchangeRateUSD) {
+          throw new Error(
+            `Exchange rate or info not found for token "${item.token_address}"`,
+          );
+        }
+
+        const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
+
+        return totalUSD.add(
+          Decimal(item.total_amount_settled.toString())
+            .div(tokenExponent.toString())
+            .mul(tokenExchangeRateUSD),
+        );
+      }, Decimal(0))
+      .toDecimalPlaces(2)
+      .toNumber();
+
+    return new PoRepClient({
+      clientAddress: statistics.client_address,
+      servicesUsed: {
+        fcss: true,
+        fwss: null,
+      },
+      dealsCount: stringToNumber(statistics.deals_count.toString()),
+      firstOnboardedAt:
+        statistics.first_onboarded_epoch !== null
+          ? this.epochToDate(BigInt(statistics.first_onboarded_epoch))
+          : null,
+      averageSla: this.getAverageSla(dealsCompliance),
+      spendLast30DaysUSD: spendLast30DaysUSD,
+    });
+  }
+
+  public async getClientDealsHistory(
+    clientAddress: string,
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepClientDealsHistoryEntry[] | null> {
+    const address = getAddress(clientAddress);
+
+    if (!(await this.clientExists(address))) {
+      return null;
+    }
+
+    const results = await createPoRepClientDealsHistoryQuery(
+      this.queryBuilder,
+      {
+        clientAddress: address,
+        genesisTimestamp: getFilecoinGenesisTimestamp({
+          testnet: this.isTestnet(),
+        }),
+        windowSize: windowSize,
+        periodStart: periodStart !== null ? periodStart.toJSDate() : null,
+      },
+    ).execute();
+
+    const firstWindowDate =
+      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+
+    return results
+      .map((result) => {
+        return {
+          date: DateTime.fromJSDate(result.window_start, {
+            zone: 'UTC',
+          }).toISODate(),
+          dealsCount: stringToNumber(result.window_total.toString()),
+          cumulativeDealsCount: stringToNumber(
+            result.cumulative_total.toString(),
+          ),
+        };
+      })
+      .filter(
+        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+      );
+  }
+
+  public async getClientSlaHistory(
+    clientAddress: string,
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepClientSlaHistoryEntry[] | null> {
+    const address = getAddress(clientAddress);
+
+    if (!(await this.clientExists(address))) {
+      return null;
+    }
+
+    const slaTarget = this.getSlaTarget();
+    const deals = await this.getOnboardedDeals(null, null, address);
+    const history = await this.getDealsComplianceHistory(
+      deals,
+      windowSize,
+      periodStart,
+    );
+
+    return history.map(({ date, dealsCompliance }) => {
+      const dealsSla = dealsCompliance
+        .map((item) => item.sla)
+        .filter((sla) => sla !== null);
+      const dealsBelowTargetCount = dealsSla.filter(
+        (sla) => sla < slaTarget,
+      ).length;
+
+      return {
+        date: date,
+        averageSla: this.getAverageSla(dealsCompliance),
+        slaTarget: slaTarget,
+        dealsBelowTargetCount: dealsBelowTargetCount,
+        dealsBelowTargetPercentage: safeDiv(
+          dealsBelowTargetCount,
+          dealsSla.length,
+          null,
+        ),
+      };
+    });
+  }
+
+  public async getClientDealsSla(
+    clientAddress: string,
+  ): Promise<PoRepClientDealsSla | null> {
+    const address = getAddress(clientAddress);
+    const to = DateTime.utc();
+    const from = to.minus({ days: 30 });
+
+    const [deals, dealsCompliance] = await Promise.all([
+      this.prismaService.po_rep_deal.findMany({
+        where: {
+          client: address,
+        },
+        orderBy: {
+          dealId: 'desc',
+        },
+      }),
+      this.getPeriodDealsCompliance(from, to, address),
+    ]);
+
+    if (deals.length === 0) {
+      return null;
+    }
+
+    const dealsSla = new Map(
+      dealsCompliance.map((item) => [item.deal.dealId, item.sla]),
+    );
+
+    return {
+      slaTarget: this.getSlaTarget(),
+      deals: deals.map((deal) => {
+        return {
+          dealId: deal.dealId.toString(),
+          providerId: F0Id.from(deal.providerId).toString(),
+          state: deal.state,
+          averageSla: dealsSla.get(deal.dealId) ?? null,
+        };
+      }),
+    };
+  }
+
+  private async clientExists(clientAddress: string): Promise<boolean> {
+    const deal = await this.prismaService.po_rep_deal.findFirst({
+      where: {
+        client: clientAddress,
+      },
+    });
+
+    return deal !== null;
+  }
+
   public async getDealsDoneCountUpToDate(upToDate?: Date): Promise<number> {
     const cutoffBlock = dateToFilecoinBlockHeight(
       upToDate ?? DateTime.utc().toJSDate(),
@@ -839,10 +1059,12 @@ export class PoRepService {
   private async getOnboardedDeals(
     providerId: F0IdInput | null,
     dealId: string | null,
+    clientAddress: string | null = null,
   ): Promise<OnboardedDeal[]> {
     const results = await createPoRepOnboardedDealsQuery(this.queryBuilder, {
       providersIds: providerId,
       dealsIds: dealId,
+      clientsAddresses: clientAddress,
     }).execute();
 
     return results.map((result) => ({
@@ -1084,8 +1306,9 @@ export class PoRepService {
   private async getPeriodDealsCompliance(
     periodStart: DateTime | null,
     periodEnd: DateTime,
+    clientAddress: string | null = null,
   ): Promise<DealCompliance[]> {
-    const deals = await this.getOnboardedDeals(null, null);
+    const deals = await this.getOnboardedDeals(null, null, clientAddress);
     const periodDeals = deals.filter(
       (deal) =>
         deal.onboardedAt < periodEnd &&

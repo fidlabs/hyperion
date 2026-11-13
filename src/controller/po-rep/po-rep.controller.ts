@@ -17,6 +17,11 @@ import {
 } from '@nestjs/swagger';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
+  PoRepClient,
+  PoRepClientDealsHistoryEntry,
+  PoRepClientDealsSla,
+  PoRepClientParameters,
+  PoRepClientSlaHistoryEntry,
   PoRepDealsList,
   PoRepDealsListParameters,
   PoRepDealsPaymentsHistoryEntry,
@@ -30,7 +35,10 @@ import {
   PoRepSLIComplianceHistoryParameters,
 } from 'src/service/po-rep/types.po-rep';
 import { ControllerBase } from '../base/controller-base';
-import { PoRepProviderResourceParameters } from './types.po-rep';
+import {
+  PoRepClientHistoryParameters,
+  PoRepProviderResourceParameters,
+} from './types.po-rep';
 
 @Controller('po-rep')
 @CacheTTL(1000 * 60 * 30) // 30 minutes
@@ -139,5 +147,129 @@ export class PoRepController extends ControllerBase {
     }
 
     return stats;
+  }
+
+  @Get('/clients/:clientAddress')
+  @UseInterceptors(ClassSerializerInterceptor)
+  @ApiOperation({
+    summary: 'Get aggregates of a single PoRep market client (payer wallet)',
+  })
+  @ApiOkResponse({
+    type: PoRepClient,
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid client address',
+  })
+  @ApiNotFoundResponse({
+    description: 'Client has no PoRep market deals',
+  })
+  public async getClient(
+    @Param() { clientAddress }: PoRepClientParameters,
+  ): Promise<PoRepClient> {
+    const client = await this.poRepService.getClient(clientAddress);
+
+    if (!client) {
+      throw new NotFoundException(
+        `PoRep client with address "${clientAddress}" does not exist`,
+      );
+    }
+
+    return client;
+  }
+
+  @Get('/clients/:clientAddress/deals-history')
+  @ApiOperation({
+    summary:
+      'Get the history of deals created by PoRep market client, starting from the period start',
+  })
+  @ApiOkResponse({
+    type: [PoRepClientDealsHistoryEntry],
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid client address or query parameters',
+  })
+  @ApiNotFoundResponse({
+    description: 'Client has no PoRep market deals',
+  })
+  public async getClientDealsHistory(
+    @Param() { clientAddress }: PoRepClientParameters,
+    @Query()
+    { period = '30d', windowSize = 'day' }: PoRepClientHistoryParameters,
+  ): Promise<PoRepClientDealsHistoryEntry[]> {
+    const history = await this.poRepService.getClientDealsHistory(
+      clientAddress,
+      this.getDashboardPeriods(period).current.periodStart,
+      windowSize,
+    );
+
+    if (!history) {
+      throw new NotFoundException(
+        `PoRep client with address "${clientAddress}" does not exist`,
+      );
+    }
+
+    return history;
+  }
+
+  @Get('/clients/:clientAddress/sla-history')
+  @ApiOperation({
+    summary:
+      'Get the history of PoRep market client deals average SLA and share of deals below the SLA target, starting from the period start',
+  })
+  @ApiOkResponse({
+    type: [PoRepClientSlaHistoryEntry],
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid client address or query parameters',
+  })
+  @ApiNotFoundResponse({
+    description: 'Client has no PoRep market deals',
+  })
+  public async getClientSlaHistory(
+    @Param() { clientAddress }: PoRepClientParameters,
+    @Query()
+    { period = '30d', windowSize = 'day' }: PoRepClientHistoryParameters,
+  ): Promise<PoRepClientSlaHistoryEntry[]> {
+    const history = await this.poRepService.getClientSlaHistory(
+      clientAddress,
+      this.getDashboardPeriods(period).current.periodStart,
+      windowSize,
+    );
+
+    if (!history) {
+      throw new NotFoundException(
+        `PoRep client with address "${clientAddress}" does not exist`,
+      );
+    }
+
+    return history;
+  }
+
+  @Get('/clients/:clientAddress/deals-sla')
+  @ApiOperation({
+    summary:
+      'Get PoRep market client deals with their average SLA in the last 30 days',
+  })
+  @ApiOkResponse({
+    type: PoRepClientDealsSla,
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid client address',
+  })
+  @ApiNotFoundResponse({
+    description: 'Client has no PoRep market deals',
+  })
+  public async getClientDealsSla(
+    @Param() { clientAddress }: PoRepClientParameters,
+  ): Promise<PoRepClientDealsSla> {
+    const dealsSla = await this.poRepService.getClientDealsSla(clientAddress);
+
+    if (!dealsSla) {
+      throw new NotFoundException(
+        `PoRep client with address "${clientAddress}" does not exist`,
+      );
+    }
+
+    return dealsSla;
   }
 }
