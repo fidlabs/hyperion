@@ -101,7 +101,7 @@ model po_rep_deal {
   client           String
   state            PoRepDealState
   dealType         PoRepDealType              @default(NONE)
-  manifestHash     String?
+  manifestHash     String
   manifestLocation String
   totalDealSize    BigInt
   proposedAtBlock  BigInt
