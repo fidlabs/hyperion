@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/fidlabs/hyperion/compare/v1.1.0...v1.1.1) (2026-11-13)
+
+
+### CI
+
+* Add release app to works with release-please action ([#24](https://github.com/fidlabs/hyperion/issues/24)) ([d39f626](https://github.com/fidlabs/hyperion/commit/d39f626b1a1c7dbe662bab59fbf95556959a54a0))
+
 ## [1.1.0](https://github.com/fidlabs/hyperion/compare/v1.0.0...v1.1.0) (2026-11-13)
 
 
