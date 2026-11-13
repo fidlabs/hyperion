@@ -755,12 +755,22 @@ export class PoRepService {
     const spendLast30DaysUSD = spend
       .reduce((totalUSD, item) => {
         const tokenDetails = tokensDetails.get(item.token_address);
+        const tokenExchangeRateUSD = tokensExchangeRatesUSD.get(
+          item.token_address,
+        );
+
+        if (!tokenDetails || !tokenExchangeRateUSD) {
+          throw new Error(
+            `Exchange rate or info not found for token "${item.token_address}"`,
+          );
+        }
+
         const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
 
         return totalUSD.add(
           Decimal(item.total_amount_settled.toString())
             .div(tokenExponent.toString())
-            .mul(tokensExchangeRatesUSD.get(item.token_address)),
+            .mul(tokenExchangeRateUSD),
         );
       }, Decimal(0))
       .toDecimalPlaces(2)
@@ -786,11 +796,17 @@ export class PoRepService {
     clientAddress: string,
     periodStart: DateTime | null,
     windowSize: PoRepHistoryParameters['windowSize'],
-  ): Promise<PoRepClientDealsHistoryEntry[]> {
+  ): Promise<PoRepClientDealsHistoryEntry[] | null> {
+    const address = getAddress(clientAddress);
+
+    if (!(await this.clientExists(address))) {
+      return null;
+    }
+
     const results = await createPoRepClientDealsHistoryQuery(
       this.queryBuilder,
       {
-        clientAddress: getAddress(clientAddress),
+        clientAddress: address,
         genesisTimestamp: getFilecoinGenesisTimestamp({
           testnet: this.isTestnet(),
         }),
@@ -823,13 +839,15 @@ export class PoRepService {
     clientAddress: string,
     periodStart: DateTime | null,
     windowSize: PoRepHistoryParameters['windowSize'],
-  ): Promise<PoRepClientSlaHistoryEntry[]> {
+  ): Promise<PoRepClientSlaHistoryEntry[] | null> {
+    const address = getAddress(clientAddress);
+
+    if (!(await this.clientExists(address))) {
+      return null;
+    }
+
     const slaTarget = this.getSlaTarget();
-    const deals = await this.getOnboardedDeals(
-      null,
-      null,
-      getAddress(clientAddress),
-    );
+    const deals = await this.getOnboardedDeals(null, null, address);
     const history = await this.getDealsComplianceHistory(
       deals,
       windowSize,
@@ -860,7 +878,7 @@ export class PoRepService {
 
   public async getClientDealsSla(
     clientAddress: string,
-  ): Promise<PoRepClientDealsSla> {
+  ): Promise<PoRepClientDealsSla | null> {
     const address = getAddress(clientAddress);
     const to = DateTime.utc();
     const from = to.minus({ days: 30 });
@@ -877,6 +895,10 @@ export class PoRepService {
       this.getPeriodDealsCompliance(from, to, address),
     ]);
 
+    if (deals.length === 0) {
+      return null;
+    }
+
     const dealsSla = new Map(
       dealsCompliance.map((item) => [item.deal.dealId, item.sla]),
     );
@@ -892,6 +914,16 @@ export class PoRepService {
         };
       }),
     };
+  }
+
+  private async clientExists(clientAddress: string): Promise<boolean> {
+    const deal = await this.prismaService.po_rep_deal.findFirst({
+      where: {
+        client: clientAddress,
+      },
+    });
+
+    return deal !== null;
   }
 
   public async getDealsDoneCountUpToDate(upToDate?: Date): Promise<number> {
