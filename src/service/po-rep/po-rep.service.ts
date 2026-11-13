@@ -731,20 +731,24 @@ export class PoRepService {
       testnet: this.isTestnet(),
     });
 
-    const [statistics, spend, dealsCompliance] = await Promise.all([
-      createPoRepClientStatisticsQuery(this.queryBuilder, {
+    const statistics = await createPoRepClientStatisticsQuery(
+      this.queryBuilder,
+      {
         clientAddress: address,
-      }).executeTakeFirst(),
+      },
+    ).executeTakeFirst();
+
+    if (!statistics) {
+      return null;
+    }
+
+    const [spend, dealsCompliance] = await Promise.all([
       createPoRepClientSpendQuery(this.queryBuilder, {
         clientAddress: address,
         fromEpoch: fromEpoch,
       }).execute(),
       this.getPeriodDealsCompliance(from, to, address),
     ]);
-
-    if (!statistics) {
-      return null;
-    }
 
     const uniqueTokens = uniq(spend.map((item) => item.token_address));
     const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
