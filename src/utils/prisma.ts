@@ -1,7 +1,5 @@
 import { Prisma } from '../generated/prisma/client';
 
-const modelName = (model: Prisma.ModelName) => Prisma.sql([`"${model}"`]);
-
 function bigIntUpdateIncludeOperations(
   update: Prisma.BigIntFieldUpdateOperationsInput,
   operations: Array<keyof Prisma.BigIntFieldUpdateOperationsInput>,

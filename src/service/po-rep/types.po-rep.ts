@@ -463,31 +463,6 @@ export class PoRepDealsPaymentsHistoryEntry {
   cumulativeTotalUSD: number;
 }
 
-// Active clients history
-class PoRepActiveClientsHistoryParameters extends PoRepHistoryParameters {
-  @ApiPropertyOptional({
-    description: 'Provider ID to filter by, no filter by default',
-    required: false,
-    type: 'string',
-  })
-  @IsOptional()
-  @IsF0IdInput()
-  providerId?: F0IdInput;
-}
-
-class PoRepActiveClientsHistoryEntry {
-  @ApiProperty({
-    description: 'Window start ISO date (UTC)',
-  })
-  date: string;
-
-  @ApiProperty({
-    description:
-      'Count of active clients in a window. Client is considered active if they have at least one deal completed before or during the window, that was not terminated before window start.',
-  })
-  activeClientsCount: number;
-}
-
 export class PoRepOnboardedDataHistoryParameters extends PoRepHistoryParameters {
   @ApiPropertyOptional({
     description: `Optional filter by provider id`,
