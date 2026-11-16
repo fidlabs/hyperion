@@ -67,5 +67,4 @@ type DealManifestErrorResult = DealManifestResultBase & {
 };
 
 export type DealManifestResult =
-  | DealManifestSuccessResult
-  | DealManifestErrorResult;
+  DealManifestSuccessResult | DealManifestErrorResult;
