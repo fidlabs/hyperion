@@ -1,14 +1,8 @@
-import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
+import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable } from '@nestjs/common';
 import { PoRepPublicClient, RECENT_NODE_CLIENT } from 'src/po-rep-indexer';
 import { Cacheable } from 'src/utils/cacheable';
-import {
-  isAddress,
-  isAddressEqual,
-  parseAbi,
-  zeroAddress,
-  type Address,
-} from 'viem';
+import { type Address, isAddress, isAddressEqual, parseAbi, zeroAddress, } from 'viem';
 
 const erc20Abi = parseAbi([
   'function symbol() view returns (string)',
@@ -31,14 +25,11 @@ export class ERC20TokenInfoService {
       return this.recentNodeClient.chain.nativeCurrency.symbol;
     }
 
-    const symbol = await this.recentNodeClient.readContract({
-      authorizationList: undefined,
+    return this.recentNodeClient.readContract({
       address: tokenAddress,
       abi: erc20Abi,
       functionName: 'symbol',
     });
-
-    return symbol;
   }
 
   @Cacheable() // Cache permanently, decimals do not change
@@ -49,14 +40,11 @@ export class ERC20TokenInfoService {
       return this.recentNodeClient.chain.nativeCurrency.decimals;
     }
 
-    const decimals = await this.recentNodeClient.readContract({
-      authorizationList: undefined,
+    return this.recentNodeClient.readContract({
       address: tokenAddress,
       abi: erc20Abi,
       functionName: 'decimals',
     });
-
-    return decimals;
   }
 
   private assertValidTokenAddress(
