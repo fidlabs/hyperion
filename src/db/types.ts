@@ -1,4 +1,4 @@
-export type PostgresIntervalUnit =
+type PostgresIntervalUnit =
   | 'year'
   | 'month'
   | 'day'

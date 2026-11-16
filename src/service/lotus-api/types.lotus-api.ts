@@ -4,7 +4,7 @@ export interface LotusStateMinerInfoResponse {
   id: number;
 }
 
-export interface LotusStateMinerInfoResult {
+interface LotusStateMinerInfoResult {
   Beneficiary: string;
   BeneficiaryTerm: BeneficiaryTerm;
   ConsensusFaultElapsed: number;
@@ -22,7 +22,7 @@ export interface LotusStateMinerInfoResult {
   WorkerChangeEpoch: number;
 }
 
-export interface BeneficiaryTerm {
+interface BeneficiaryTerm {
   Expiration: number;
   Quota: string;
   UsedQuota: string;

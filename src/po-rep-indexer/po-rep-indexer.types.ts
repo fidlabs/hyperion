@@ -9,11 +9,11 @@ import {
 
 type SupportedChain = (typeof PO_REP_SUPPORTED_CHAINS)[number];
 
-export type FilecoinCid = {
+type FilecoinCid = {
   '/': string;
 };
 
-export type FilecoinFinalizedTipset = {
+type FilecoinFinalizedTipset = {
   Cids: FilecoinCid[];
   Blocks: unknown[];
   Height: number;
@@ -27,7 +27,7 @@ export type FilecoinRpcSchema = [
   },
 ];
 
-export type FilecoinActions = {
+type FilecoinActions = {
   filecoin: {
     chainGetFinalizedTipSet: () => Promise<FilecoinFinalizedTipset>;
   };
@@ -60,7 +60,7 @@ export type DealManifestSuccessResult = DealManifestResultBase & {
   error?: never;
 };
 
-export type DealManifestErrorResult = DealManifestResultBase & {
+type DealManifestErrorResult = DealManifestResultBase & {
   success: false;
   data?: never;
   error: unknown;
