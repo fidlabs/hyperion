@@ -2,7 +2,13 @@ import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable } from '@nestjs/common';
 import { PoRepPublicClient, RECENT_NODE_CLIENT } from 'src/po-rep-indexer';
 import { Cacheable } from 'src/utils/cacheable';
-import { type Address, isAddress, isAddressEqual, parseAbi, zeroAddress, } from 'viem';
+import {
+  type Address,
+  isAddress,
+  isAddressEqual,
+  parseAbi,
+  zeroAddress,
+} from 'viem';
 
 const erc20Abi = parseAbi([
   'function symbol() view returns (string)',

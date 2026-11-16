@@ -17,6 +17,7 @@
     "migration:generate": "prisma generate --sql",
     "migration:create_migration": "npx prisma migrate dev --schema prisma/schema.prisma --name MIGRATION_NAME",
     "format:check": "prettier --check \"src/**/*.ts\"",
+    "format:check:write": "prettier --check \"src/**/*.ts\" --write",
     "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\""
   },
   "dependencies": {

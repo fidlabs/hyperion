@@ -22,8 +22,7 @@ const cid = z.custom<string>((value) => {
 
 export const RECENT_NODE_CLIENT = 'PO_REP_RECENT_NODE_CLIENT';
 export const ARCHIVE_NODE_CLIENT = 'PO_REP_ARCHIVE_NODE_CLIENT';
-const PO_REP_MARKET_CONTRACT_ADDRESS_KEY =
-  'PO_REP_MARKET_CONTRACT_ADDRESS';
+const PO_REP_MARKET_CONTRACT_ADDRESS_KEY = 'PO_REP_MARKET_CONTRACT_ADDRESS';
 
 // Block in which PoRep v2 contracts were deployed. Nothing indexed by this
 // module exists before it, so every runner starts here.

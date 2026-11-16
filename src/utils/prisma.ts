@@ -1,7 +1,6 @@
 import { Prisma } from '../generated/prisma/client';
 
-const modelName = (model: Prisma.ModelName) =>
-  Prisma.sql([`"${model}"`]);
+const modelName = (model: Prisma.ModelName) => Prisma.sql([`"${model}"`]);
 
 function bigIntUpdateIncludeOperations(
   update: Prisma.BigIntFieldUpdateOperationsInput,
@@ -53,15 +52,9 @@ function safeBigintOperation(
 
 export function mergeBigIntFieldUpdate(
   updateA:
-    | Prisma.BigIntFieldUpdateOperationsInput
-    | bigint
-    | number
-    | undefined,
+    Prisma.BigIntFieldUpdateOperationsInput | bigint | number | undefined,
   updateB:
-    | Prisma.BigIntFieldUpdateOperationsInput
-    | bigint
-    | number
-    | undefined,
+    Prisma.BigIntFieldUpdateOperationsInput | bigint | number | undefined,
 ): Prisma.BigIntFieldUpdateOperationsInput | bigint | number | undefined {
   if (typeof updateA !== 'object' || typeof updateB !== 'object') {
     return updateB;

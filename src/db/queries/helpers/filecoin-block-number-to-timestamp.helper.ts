@@ -2,9 +2,7 @@ import { AliasableExpression, Expression, expressionBuilder } from 'kysely';
 import { DB } from '../../auto-generated/types';
 
 type NumericalExpressionOrNumber =
-  | Expression<string | number | bigint>
-  | number
-  | bigint;
+  Expression<string | number | bigint> | number | bigint;
 
 export interface FilecoinBlockNumberToTimestampOptions {
   blockNumber: NumericalExpressionOrNumber;
