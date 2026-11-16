@@ -10,7 +10,7 @@ import { F0Id } from './utils';
 
 // Big Int
 @ValidatorConstraint()
-export class IsBigIntLikeConstraint implements ValidatorConstraintInterface {
+class IsBigIntLikeConstraint implements ValidatorConstraintInterface {
   validate(value: any, _validationArguments: ValidationArguments): boolean {
     if (typeof value === 'bigint') {
       return true;
@@ -49,7 +49,7 @@ export function IsBigIntLike(validationOptions?: ValidationOptions) {
 // f0 ID
 export type F0IdInput = `f0${number}` | `${number}` | bigint | number;
 
-export function isF0IdInput(input: unknown): input is F0IdInput {
+function isF0IdInput(input: unknown): input is F0IdInput {
   if (
     typeof input !== 'string' &&
     typeof input !== 'bigint' &&
@@ -67,7 +67,7 @@ export function isF0IdInput(input: unknown): input is F0IdInput {
 }
 
 @ValidatorConstraint()
-export class IsF0IdInputConstraint implements ValidatorConstraintInterface {
+class IsF0IdInputConstraint implements ValidatorConstraintInterface {
   validate(value: any, _validationArguments: ValidationArguments): boolean {
     return isF0IdInput(value);
   }
@@ -91,7 +91,7 @@ export function IsF0IdInput(validationOptions?: ValidationOptions) {
 }
 
 // CID
-export function isCID(input: unknown): input is string {
+function isCID(input: unknown): input is string {
   if (typeof input !== 'string') {
     return false;
   }
@@ -105,7 +105,7 @@ export function isCID(input: unknown): input is string {
 }
 
 @ValidatorConstraint()
-export class IsCIDConstraint implements ValidatorConstraintInterface {
+class IsCIDConstraint implements ValidatorConstraintInterface {
   validate(value: any, _validationArguments: ValidationArguments): boolean {
     return isCID(value);
   }

@@ -464,7 +464,7 @@ export class PoRepDealsPaymentsHistoryEntry {
 }
 
 // Active clients history
-export class PoRepActiveClientsHistoryParameters extends PoRepHistoryParameters {
+class PoRepActiveClientsHistoryParameters extends PoRepHistoryParameters {
   @ApiPropertyOptional({
     description: 'Provider ID to filter by, no filter by default',
     required: false,
@@ -475,7 +475,7 @@ export class PoRepActiveClientsHistoryParameters extends PoRepHistoryParameters 
   providerId?: F0IdInput;
 }
 
-export class PoRepActiveClientsHistoryEntry {
+class PoRepActiveClientsHistoryEntry {
   @ApiProperty({
     description: 'Window start ISO date (UTC)',
   })

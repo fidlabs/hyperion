@@ -1,4 +1,4 @@
-export interface UrlFinderDealPorepSlis {
+interface UrlFinderDealPorepSlis {
   retrievability_bps: number | null;
   bandwidth_mbps: number | null;
   latency_ms: number | null;

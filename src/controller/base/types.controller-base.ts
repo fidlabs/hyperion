@@ -68,7 +68,7 @@ export class SortingInfoRequest {
   order?: 'asc' | 'desc';
 }
 
-export class PaginationSortingInfoRequest extends IntersectionType(
+class PaginationSortingInfoRequest extends IntersectionType(
   PaginationInfoRequest,
   SortingInfoRequest,
 ) {}
@@ -132,12 +132,12 @@ export class DashboardServiceValue {
 }
 
 // Dashboard Statistics
-export type DashboardStatisticChangeInterval =
+type DashboardStatisticChangeInterval =
   (typeof dashboardStatisticChangeIntervals)[number];
 
 const dashboardStatisticChangeIntervals = ['day', 'week', 'month'] as const;
 
-export class BigIntDashboardStatisticValue {
+class BigIntDashboardStatisticValue {
   @ApiProperty({
     description: 'BigInt value for the statistic as string',
   })
@@ -149,7 +149,7 @@ export class BigIntDashboardStatisticValue {
   type: 'bigint';
 }
 
-export class NumericDashboardStatisticValue {
+class NumericDashboardStatisticValue {
   @ApiProperty({
     description: 'Numeric value for the statistic',
   })
@@ -161,7 +161,7 @@ export class NumericDashboardStatisticValue {
   type: 'numeric';
 }
 
-export class PercentageDashboardStatisticValue {
+class PercentageDashboardStatisticValue {
   @ApiProperty({
     description: 'Percentage value for the statistic',
   })
@@ -183,10 +183,10 @@ const durationDashboardStatisticUnits = [
   'month',
   'year',
 ] as const;
-export type DurationDashboardStatisticUnit =
+type DurationDashboardStatisticUnit =
   (typeof durationDashboardStatisticUnits)[number];
 
-export class DurationDashboardStatisticValue {
+class DurationDashboardStatisticValue {
   @ApiProperty({
     description: 'Value for the statistic in duration units',
   })
@@ -204,13 +204,13 @@ export class DurationDashboardStatisticValue {
   type: 'duration';
 }
 
-export type DashboardStatisticValue =
+type DashboardStatisticValue =
   | BigIntDashboardStatisticValue
   | NumericDashboardStatisticValue
   | PercentageDashboardStatisticValue
   | DurationDashboardStatisticValue;
 
-export class DashboardStatisticChange {
+class DashboardStatisticChange {
   @ApiProperty({
     description: 'Percentage change of given statistic in time',
   })
@@ -236,7 +236,7 @@ export class DashboardStatisticChange {
   PercentageDashboardStatisticValue,
   DurationDashboardStatisticValue,
 )
-export class DashboardStatistic {
+class DashboardStatistic {
   @ApiProperty({ description: 'Statistic title' })
   title: string;
 

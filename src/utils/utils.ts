@@ -19,23 +19,23 @@ export function stringToBool(s?: string): boolean | null {
   return null;
 }
 
-export function stringToDate(isoString?: string): Date | null {
+function stringToDate(isoString?: string): Date | null {
   if (!isoString) return null;
   const date = DateTime.fromISO(isoString, { zone: 'utc' });
   return date.isValid ? date.toJSDate() : null;
 }
 
-export type stringifiedBool = 'true' | 'false';
+type stringifiedBool = 'true' | 'false';
 
-export function lastWeek(): Date {
+function lastWeek(): Date {
   return DateTime.now().toUTC().minus({ week: 1 }).startOf('week').toJSDate();
 }
 
-export function yesterday(): DateTime {
+function yesterday(): DateTime {
   return DateTime.now().toUTC().minus({ day: 1 }).startOf('day');
 }
 
-export function isTodayUTC(input: DateTime): boolean {
+function isTodayUTC(input: DateTime): boolean {
   const now = DateTime.utc();
   const comparedDate = input.toUTC();
 
@@ -46,7 +46,7 @@ export function isTodayUTC(input: DateTime): boolean {
   );
 }
 
-export function isSameUtcDay(a: Date, b: Date): boolean {
+function isSameUtcDay(a: Date, b: Date): boolean {
   return (
     a.getUTCFullYear() === b.getUTCFullYear() &&
     a.getUTCMonth() === b.getUTCMonth() &&
@@ -54,7 +54,7 @@ export function isSameUtcDay(a: Date, b: Date): boolean {
   );
 }
 
-export function envNotSet(value?: any): boolean {
+function envNotSet(value?: any): boolean {
   return (
     value === undefined ||
     value === null ||
@@ -62,7 +62,7 @@ export function envNotSet(value?: any): boolean {
   );
 }
 
-export function envSet(value?: any): boolean {
+function envSet(value?: any): boolean {
   return !envNotSet(value);
 }
 
@@ -70,7 +70,7 @@ export async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function parseDataSizeToBytes(value?: string): bigint | null {
+function parseDataSizeToBytes(value?: string): bigint | null {
   if (!value) return null;
 
   if (!value.toUpperCase().endsWith('B'))
@@ -119,7 +119,7 @@ export function stringToNumber(valueString?: string | null): number | null {
   return valueNumber;
 }
 
-export function bigIntDiv(
+function bigIntDiv(
   a: bigint | number,
   b: bigint | number,
   precision: number = 2,
@@ -139,7 +139,7 @@ export function bigIntDiv(
   return result;
 }
 
-export function bigIntMul(a: bigint, b: number, precision = 6): bigint {
+function bigIntMul(a: bigint, b: number, precision = 6): bigint {
   const precisionMultiplier = 10 ** precision;
 
   return (
@@ -271,7 +271,7 @@ export type DatabasePaginationQuery = {
   skip?: number;
 };
 
-export type AverageRetrievabilityType = {
+type AverageRetrievabilityType = {
   http?: number;
   urlFinder?: number;
   spark?: number;
