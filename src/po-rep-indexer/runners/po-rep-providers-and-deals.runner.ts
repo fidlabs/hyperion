@@ -363,7 +363,6 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
           abi: SPRegistryABI,
           functionName: 'getOfferView',
           args: [log.args.offerId],
-          authorizationList: undefined,
         });
       }),
     );
@@ -490,21 +489,18 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
             abi: PoRepMarketABI,
             functionName: 'getDeal',
             args: [log.args.dealId],
-            authorizationList: undefined,
           }),
           this.recentNodeClient.readContract({
             address: this.configService.get('PO_REP_MARKET_CONTRACT_ADDRESS'),
             abi: PoRepMarketABI,
             functionName: 'getDealTerms',
             args: [log.args.dealId],
-            authorizationList: undefined,
           }),
           this.recentNodeClient.readContract({
             address: this.configService.get('PO_REP_MARKET_CONTRACT_ADDRESS'),
             abi: PoRepMarketABI,
             functionName: 'getDealPayment',
             args: [log.args.dealId],
-            authorizationList: undefined,
           }),
         ]);
 
@@ -587,7 +583,6 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
           abi: PoRepMarketABI,
           functionName: 'getDeal',
           args: [log.args.dealId],
-          authorizationList: undefined,
         });
       }),
     );
