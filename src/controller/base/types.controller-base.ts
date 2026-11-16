@@ -1,12 +1,5 @@
-import {
-  ApiExtraModels,
-  ApiProperty,
-  ApiPropertyOptional,
-  getSchemaPath,
-  IntersectionType,
-} from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsOptional } from 'class-validator';
-import { BigIntString } from 'src/utils/utils';
 
 export class PaginationInfoRequest {
   @ApiPropertyOptional({
@@ -68,11 +61,6 @@ export class SortingInfoRequest {
   order?: 'asc' | 'desc';
 }
 
-class PaginationSortingInfoRequest extends IntersectionType(
-  PaginationInfoRequest,
-  SortingInfoRequest,
-) {}
-
 // Dashboards
 export const dashboardPeriods = ['30d', '90d', '1y', 'all'] as const;
 
@@ -129,135 +117,4 @@ export class DashboardServiceValue {
     nullable: true,
   })
   fwss: number | null;
-}
-
-// Dashboard Statistics
-type DashboardStatisticChangeInterval =
-  (typeof dashboardStatisticChangeIntervals)[number];
-
-const dashboardStatisticChangeIntervals = ['day', 'week', 'month'] as const;
-
-class BigIntDashboardStatisticValue {
-  @ApiProperty({
-    description: 'BigInt value for the statistic as string',
-  })
-  value: BigIntString;
-
-  @ApiProperty({
-    enum: ['bigint'],
-  })
-  type: 'bigint';
-}
-
-class NumericDashboardStatisticValue {
-  @ApiProperty({
-    description: 'Numeric value for the statistic',
-  })
-  value: number;
-
-  @ApiProperty({
-    enum: ['numeric'],
-  })
-  type: 'numeric';
-}
-
-class PercentageDashboardStatisticValue {
-  @ApiProperty({
-    description: 'Percentage value for the statistic',
-  })
-  value: number;
-
-  @ApiProperty({
-    enum: ['percentage'],
-  })
-  type: 'percentage';
-}
-
-const durationDashboardStatisticUnits = [
-  'millisecond',
-  'second',
-  'minute',
-  'hour',
-  'day',
-  'week',
-  'month',
-  'year',
-] as const;
-type DurationDashboardStatisticUnit =
-  (typeof durationDashboardStatisticUnits)[number];
-
-class DurationDashboardStatisticValue {
-  @ApiProperty({
-    description: 'Value for the statistic in duration units',
-  })
-  value: number;
-
-  @ApiProperty({
-    description: 'Duration unit',
-    enum: durationDashboardStatisticUnits,
-  })
-  unit: DurationDashboardStatisticUnit;
-
-  @ApiProperty({
-    enum: ['duration'],
-  })
-  type: 'duration';
-}
-
-type DashboardStatisticValue =
-  | BigIntDashboardStatisticValue
-  | NumericDashboardStatisticValue
-  | PercentageDashboardStatisticValue
-  | DurationDashboardStatisticValue;
-
-class DashboardStatisticChange {
-  @ApiProperty({
-    description: 'Percentage change of given statistic in time',
-  })
-  value: number;
-
-  @ApiProperty({
-    description: 'Interval used to calculate change in time',
-    enumName: 'DashboardStatisticChangeInterval',
-    enum: dashboardStatisticChangeIntervals,
-  })
-  interval: DashboardStatisticChangeInterval;
-
-  @ApiProperty({
-    description:
-      'Flag telling if increase in given stat is a positive or negative thing',
-  })
-  increaseNegative: boolean;
-}
-
-@ApiExtraModels(
-  BigIntDashboardStatisticValue,
-  NumericDashboardStatisticValue,
-  PercentageDashboardStatisticValue,
-  DurationDashboardStatisticValue,
-)
-class DashboardStatistic {
-  @ApiProperty({ description: 'Statistic title' })
-  title: string;
-
-  @ApiPropertyOptional({
-    description: 'Optional description of the statistic',
-  })
-  description: string | null;
-
-  @ApiProperty({
-    description: 'Current value of given statistic',
-    oneOf: [
-      { $ref: getSchemaPath(BigIntDashboardStatisticValue) },
-      { $ref: getSchemaPath(NumericDashboardStatisticValue) },
-      { $ref: getSchemaPath(PercentageDashboardStatisticValue) },
-      { $ref: getSchemaPath(DurationDashboardStatisticValue) },
-    ],
-  })
-  value: DashboardStatisticValue;
-
-  @ApiPropertyOptional({
-    description: 'Percentage change of given statistic in time',
-  })
-  percentageChange?: DashboardStatisticChange | null;
 }

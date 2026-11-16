@@ -3,12 +3,12 @@ import { parse } from 'bytes-iec';
 
 export type BigIntString = `${'-' | ''}${number}`;
 
-interface FilecoinBlockHeightConversionConfig {
+export interface FilecoinBlockHeightConversionConfig {
   blockTimeSeconds?: number;
   testnet?: boolean;
 }
 
-const filecoinGenesisBlocks = {
+export const filecoinGenesisBlocks = {
   mainnet: 1598306400,
   testnet: 1667326380,
 } as const;
@@ -19,23 +19,23 @@ export function stringToBool(s?: string): boolean | null {
   return null;
 }
 
-function stringToDate(isoString?: string): Date | null {
+export function stringToDate(isoString?: string): Date | null {
   if (!isoString) return null;
   const date = DateTime.fromISO(isoString, { zone: 'utc' });
   return date.isValid ? date.toJSDate() : null;
 }
 
-type stringifiedBool = 'true' | 'false';
+export type stringifiedBool = 'true' | 'false';
 
-function lastWeek(): Date {
+export function lastWeek(): Date {
   return DateTime.now().toUTC().minus({ week: 1 }).startOf('week').toJSDate();
 }
 
-function yesterday(): DateTime {
+export function yesterday(): DateTime {
   return DateTime.now().toUTC().minus({ day: 1 }).startOf('day');
 }
 
-function isTodayUTC(input: DateTime): boolean {
+export function isTodayUTC(input: DateTime): boolean {
   const now = DateTime.utc();
   const comparedDate = input.toUTC();
 
@@ -46,7 +46,7 @@ function isTodayUTC(input: DateTime): boolean {
   );
 }
 
-function isSameUtcDay(a: Date, b: Date): boolean {
+export function isSameUtcDay(a: Date, b: Date): boolean {
   return (
     a.getUTCFullYear() === b.getUTCFullYear() &&
     a.getUTCMonth() === b.getUTCMonth() &&
@@ -54,7 +54,7 @@ function isSameUtcDay(a: Date, b: Date): boolean {
   );
 }
 
-function envNotSet(value?: any): boolean {
+export function envNotSet(value?: any): boolean {
   return (
     value === undefined ||
     value === null ||
@@ -62,7 +62,7 @@ function envNotSet(value?: any): boolean {
   );
 }
 
-function envSet(value?: any): boolean {
+export function envSet(value?: any): boolean {
   return !envNotSet(value);
 }
 
@@ -70,7 +70,7 @@ export async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function parseDataSizeToBytes(value?: string): bigint | null {
+export function parseDataSizeToBytes(value?: string): bigint | null {
   if (!value) return null;
 
   if (!value.toUpperCase().endsWith('B'))
@@ -119,7 +119,7 @@ export function stringToNumber(valueString?: string | null): number | null {
   return valueNumber;
 }
 
-function bigIntDiv(
+export function bigIntDiv(
   a: bigint | number,
   b: bigint | number,
   precision: number = 2,
@@ -139,7 +139,7 @@ function bigIntDiv(
   return result;
 }
 
-function bigIntMul(a: bigint, b: number, precision = 6): bigint {
+export function bigIntMul(a: bigint, b: number, precision = 6): bigint {
   const precisionMultiplier = 10 ** precision;
 
   return (
@@ -269,10 +269,4 @@ export class F0Id {
 export type DatabasePaginationQuery = {
   take?: number;
   skip?: number;
-};
-
-type AverageRetrievabilityType = {
-  http?: number;
-  urlFinder?: number;
-  spark?: number;
 };
