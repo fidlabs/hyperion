@@ -1,4 +1,3 @@
-import { Cache, CACHE_MANAGER, CacheTTL } from '@nestjs/cache-manager';
 import {
   ClassSerializerInterceptor,
   Controller,
@@ -9,13 +8,14 @@ import {
   Query,
   UseInterceptors,
 } from '@nestjs/common';
+
 import {
   ApiBadRequestResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
 } from '@nestjs/swagger';
-import { PoRepService } from 'src/service/po-rep/po-rep.service';
+
 import {
   PoRepClient,
   PoRepClientDealsHistoryEntry,
@@ -36,14 +36,18 @@ import {
   PoRepSLIComplianceHistoryEntry,
   PoRepSLIComplianceHistoryParameters,
 } from 'src/service/po-rep/types.po-rep';
-import { ControllerBase } from '../base/controller-base';
+
 import {
   PoRepClientHistoryParameters,
   PoRepProviderResourceParameters,
-  GetPoRepProvidersResponse,
-  PoRepProviderResourceParameters,
-  PoRepProvidersListParameters,
 } from './types.po-rep';
+
+import { Cache, CACHE_MANAGER, CacheTTL } from '@nestjs/cache-manager';
+import { PoRepService } from 'src/service/po-rep/po-rep.service';
+import { ControllerBase } from '../base/controller-base';
+import { F0Id, stringToBool } from 'src/utils/utils';
+import { PoRepDealState, type Prisma } from '../../generated/prisma/client';
+import { PrismaService } from 'src/db/prisma.service';
 
 @Controller('po-rep')
 @CacheTTL(1000 * 60 * 30) // 30 minutes
@@ -51,6 +55,7 @@ export class PoRepController extends ControllerBase {
   constructor(
     @Inject(CACHE_MANAGER) private _cacheManager: Cache,
     private readonly poRepService: PoRepService,
+    private readonly prismaService: PrismaService,
   ) {
     super();
   }

@@ -1,12 +1,7 @@
 import { ApiProperty, IntersectionType, PickType } from '@nestjs/swagger';
 import { PoRepHistoryParameters } from 'src/service/po-rep/types.po-rep';
-import { IsBooleanString, IsOptional } from 'class-validator';
 import { F0IdInput, IsF0IdInput } from 'src/utils/validators';
 import { DashboardStatisticsRequest } from '../base/types.controller-base';
-import {
-  PaginationInfoRequest,
-  PaginationInfoResponse,
-} from '../base/types.controller-base';
 
 export class PoRepProviderResourceParameters {
   @ApiProperty({
