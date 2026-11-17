@@ -220,7 +220,8 @@ export class PoRepController extends ControllerBase {
   @Get('/clients/:clientAddress/sla-history')
   @ApiOperation({
     summary:
-      'Get the history of PoRep market client deals average SLA and share of deals below the SLA target, starting from the period start',
+      'Get the history of PoRep market client deals average SLA and share of deals below the SLA target, ' +
+      'starting from the period start',
   })
   @ApiOkResponse({
     type: [PoRepClientSlaHistoryEntry],
@@ -323,11 +324,19 @@ export class PoRepController extends ControllerBase {
   @ApiNotFoundResponse({
     description: 'Error response when provider with given id does not exist.',
   })
-  public getProviderEconomicsStatistics(
+  public async getProviderEconomicsStatistics(
     @Param() parameters: PoRepProviderResourceParameters,
   ): Promise<PoRepProviderEconomicsStatistics> {
-    return this.poRepService.getProviderEconomicsStatistics(
+    const stats = this.poRepService.getProviderEconomicsStatistics(
       parameters.providerId,
     );
+
+    if (!stats) {
+      throw new NotFoundException(
+        `Po-rep provider with ID "${parameters.providerId}" does not exist.`,
+      );
+    }
+
+    return stats;
   }
 }
