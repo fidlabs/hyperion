@@ -1,12 +1,5 @@
-import {
-  ApiExtraModels,
-  ApiProperty,
-  ApiPropertyOptional,
-  getSchemaPath,
-  IntersectionType,
-} from '@nestjs/swagger';
-import { IsNumberString, IsOptional } from 'class-validator';
-import { BigIntString } from 'src/utils/utils';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNumberString } from 'class-validator';
 import { IsIn, IsOptional } from 'class-validator';
 
 export class PaginationInfoRequest {
