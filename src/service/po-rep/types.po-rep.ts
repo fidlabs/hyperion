@@ -533,6 +533,13 @@ export interface PoRepProvidersHistoryEntry {
   activeProvidersCount: number;
 }
 
+export interface PoRepClientsHistoryEntry {
+  date: string;
+  newClientsCount: number;
+  totalClientsCount: number;
+  averageDatasetsPerClient: number | null;
+}
+
 export interface PoRepProvidersEarningsAgainstSla {
   slaTarget: number;
   providers: {

@@ -7,6 +7,7 @@ import { InjectQueryBuilder, QueryBuilder } from 'src/db';
 import { PrismaService } from 'src/db/prisma.service';
 import {
   createPoRepClientDealsHistoryQuery,
+  createPoRepClientsHistoryQuery,
   createPoRepClientSpendQuery,
   createPoRepClientStatisticsQuery,
 } from 'src/db/queries/po-rep-clients.query';
@@ -48,6 +49,7 @@ import {
   PoRepClient,
   PoRepClientDealsHistoryEntry,
   PoRepClientDealsSla,
+  PoRepClientsHistoryEntry,
   PoRepClientSlaHistoryEntry,
   PoRepComplianceState,
   PoRepDeal,
@@ -486,6 +488,45 @@ export class PoRepService {
           ),
           activeProvidersCount: stringToNumber(
             result.active_providers_count.toString(),
+          ),
+        };
+      })
+      .filter(
+        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+      );
+  }
+
+  public async getClientsHistory(
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepClientsHistoryEntry[]> {
+    const results = await createPoRepClientsHistoryQuery(this.queryBuilder, {
+      genesisTimestamp: getFilecoinGenesisTimestamp({
+        testnet: this.isTestnet(),
+      }),
+      windowSize: windowSize,
+      periodStart: periodStart !== null ? periodStart.toJSDate() : null,
+    }).execute();
+
+    const firstWindowDate =
+      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+
+    return results
+      .map((result) => {
+        const totalClientsCount = stringToNumber(
+          result.total_clients_count.toString(),
+        );
+
+        return {
+          date: DateTime.fromJSDate(result.window_start, {
+            zone: 'UTC',
+          }).toISODate(),
+          newClientsCount: stringToNumber(result.new_clients_count.toString()),
+          totalClientsCount: totalClientsCount,
+          averageDatasetsPerClient: safeDiv(
+            stringToNumber(result.total_datasets_count.toString()),
+            totalClientsCount,
+            null,
           ),
         };
       })
