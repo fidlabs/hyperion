@@ -1,7 +1,10 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotImplementedException } from '@nestjs/common';
 import { DateTime, DurationLike } from 'luxon';
 import {
   DashboardPeriod,
+  DashboardService,
+  DashboardServiceSplitValue,
+  DashboardServiceValue,
   PaginationInfo,
   PaginationInfoRequest,
   PaginationInfoResponse,
@@ -45,6 +48,31 @@ export class ControllerBase {
         periodStart: periodStart.minus(periodDuration),
         periodEnd: periodStart,
       },
+    };
+  }
+
+  protected validateServiceImplemented(service: DashboardService) {
+    if (service === 'fwss') {
+      throw new NotImplementedException(
+        'Statistics for FWSS are not implemented yet',
+      );
+    }
+  }
+
+  protected fcssOnly(value: number | null): DashboardServiceValue {
+    return {
+      total: value,
+      fcss: value,
+      fwss: null,
+    };
+  }
+
+  protected fcssOnlyWithoutTotal(
+    value: number | null,
+  ): DashboardServiceSplitValue {
+    return {
+      fcss: value,
+      fwss: null,
     };
   }
 

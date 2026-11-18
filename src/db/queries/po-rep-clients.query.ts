@@ -120,3 +120,103 @@ export function createPoRepClientDealsHistoryQuery(
     ])
     .orderBy('wd.window_start');
 }
+
+export function createPoRepClientsHistoryQuery(
+  qb: QueryBuilder,
+  {
+    genesisTimestamp,
+    windowSize,
+    periodStart,
+  }: Omit<CreatePoRepClientDealsHistoryQueryParameters, 'clientAddress'>,
+) {
+  const boundsCTE = qb.selectFrom('po_rep_deal').select((eb) => [
+    truncateToWindowSize(
+      eb.fn<Date>('least', [
+        filecoinBlockNumberToTimestamp({
+          blockNumber: eb.fn.min('proposedAtBlock'),
+          genesisTimestamp: genesisTimestamp,
+        }),
+        eb.val(periodStart),
+      ]),
+      windowSize,
+    ).as('start_window'),
+    truncateToWindowSize(eb.fn<Date>('now'), windowSize).as('end_window'),
+  ]);
+
+  const windowDatesCTE = qb
+    .with('bounds', boundsCTE)
+    .selectFrom('bounds')
+    .select((eb) => [
+      eb
+        .fn<Date>('generate_series', [
+          'bounds.start_window',
+          'bounds.end_window',
+          castToInterval(`1 ${windowSize}`),
+        ])
+        .as('window_start'),
+    ]);
+
+  const clientsFirstDealCTE = qb
+    .selectFrom('po_rep_deal')
+    .select((eb) => [
+      'client',
+      eb.fn.min('proposedAtBlock').as('first_deal_epoch'),
+    ])
+    .groupBy('client');
+
+  const newClientsCTE = qb
+    .with('cfd', clientsFirstDealCTE)
+    .selectFrom('cfd')
+    .select((eb) => [
+      truncateToWindowSize(
+        filecoinBlockNumberToTimestamp({
+          blockNumber: eb.ref('cfd.first_deal_epoch'),
+          genesisTimestamp: genesisTimestamp,
+        }),
+        windowSize,
+      ).as('window_start'),
+      eb.fn.count('cfd.client').as('new_clients_count'),
+    ])
+    .groupBy('window_start');
+
+  const datasetsFirstDealCTE = qb
+    .selectFrom('po_rep_deal')
+    .select((eb) => [eb.fn.min('proposedAtBlock').as('first_deal_epoch')])
+    .groupBy(['client', 'manifestHash']);
+
+  const newDatasetsCTE = qb
+    .with('dfd', datasetsFirstDealCTE)
+    .selectFrom('dfd')
+    .select((eb) => [
+      truncateToWindowSize(
+        filecoinBlockNumberToTimestamp({
+          blockNumber: eb.ref('dfd.first_deal_epoch'),
+          genesisTimestamp: genesisTimestamp,
+        }),
+        windowSize,
+      ).as('window_start'),
+      eb.fn.countAll().as('new_datasets_count'),
+    ])
+    .groupBy('window_start');
+
+  return qb
+    .with('wd', windowDatesCTE)
+    .with('nc', newClientsCTE)
+    .with('nds', newDatasetsCTE)
+    .selectFrom('wd')
+    .leftJoin('nc', 'nc.window_start', 'wd.window_start')
+    .leftJoin('nds', 'nds.window_start', 'wd.window_start')
+    .select((eb) => [
+      'wd.window_start',
+      eb.fn.coalesce('nc.new_clients_count', eb.val(0)).as('new_clients_count'),
+      eb.fn
+        .sum(eb.fn.coalesce('nc.new_clients_count', eb.val(0)))
+        .over((eb) => eb.orderBy('wd.window_start'))
+        .as('total_clients_count'),
+      eb.fn
+        .sum(eb.fn.coalesce('nds.new_datasets_count', eb.val(0)))
+        .over((eb) => eb.orderBy('wd.window_start'))
+        .as('total_datasets_count'),
+    ])
+    .orderBy('wd.window_start');
+}

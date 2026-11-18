@@ -8,6 +8,7 @@ import { TerminusModule } from '@nestjs/terminus';
 import axios from 'axios';
 import axiosBetterStacktrace from 'axios-better-stacktrace';
 import { AppController } from './controller/app/app.controller';
+import { ClientsController } from './controller/clients/clients.controller';
 import { FilecoinPayController } from './controller/filecoin-pay/filecoin-pay.controller';
 import { PoRepController } from './controller/po-rep/po-rep.controller';
 import { StorageProvidersController } from './controller/storage-providers/storage-providers.controller';
@@ -42,6 +43,7 @@ import { IPNIController } from 'src/controller/ipni/ipni.controller';
   controllers: [
     PoRepController,
     StorageProvidersController,
+    ClientsController,
     FilecoinPayController,
     AppController,
     IPNIController,
