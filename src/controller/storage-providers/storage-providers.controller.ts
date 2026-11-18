@@ -1,11 +1,5 @@
 import { Cache, CACHE_MANAGER, CacheTTL } from '@nestjs/cache-manager';
-import {
-  Controller,
-  Get,
-  Inject,
-  NotImplementedException,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Inject, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiNotImplementedResponse,
@@ -17,12 +11,7 @@ import {
   ControllerBase,
   DashboardPeriodBoundaries,
 } from '../base/controller-base';
-import {
-  DashboardService,
-  DashboardServiceSplitValue,
-  DashboardServiceValue,
-  DashboardStatisticsRequest,
-} from '../base/types.controller-base';
+import { DashboardStatisticsRequest } from '../base/types.controller-base';
 import {
   StorageProvidersEarningsAgainstSla,
   StorageProvidersEarningsAgainstSlaRequest,
@@ -217,31 +206,6 @@ export class StorageProvidersController extends ControllerBase {
       activeProvidersCount: this.fcssOnly(fcss.activeProvidersCount),
       earningsUSD: this.fcssOnly(fcss.earningsUSD),
       averageSla: this.fcssOnly(fcss.averageSla),
-    };
-  }
-
-  private validateServiceImplemented(service: DashboardService) {
-    if (service === 'fwss') {
-      throw new NotImplementedException(
-        'Storage providers statistics for FWSS are not implemented yet',
-      );
-    }
-  }
-
-  private fcssOnly(value: number | null): DashboardServiceValue {
-    return {
-      total: value,
-      fcss: value,
-      fwss: null,
-    };
-  }
-
-  private fcssOnlyWithoutTotal(
-    value: number | null,
-  ): DashboardServiceSplitValue {
-    return {
-      fcss: value,
-      fwss: null,
     };
   }
 }
