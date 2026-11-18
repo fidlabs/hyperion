@@ -8,7 +8,12 @@ import {
 } from '@nestjs/swagger';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import { ControllerBase } from '../base/controller-base';
-import { ClientsHistoryEntry, ClientsHistoryRequest } from './types.clients';
+import { DashboardStatisticsRequest } from '../base/types.controller-base';
+import {
+  ClientsHistoryEntry,
+  ClientsHistoryRequest,
+  ClientsReturningHistoryEntry,
+} from './types.clients';
 
 @Controller('clients')
 @CacheTTL(1000 * 60 * 30) // 30 minutes
@@ -55,6 +60,44 @@ export class ClientsController extends ControllerBase {
         newClientsCount: this.fcssOnly(entry.newClientsCount),
         totalClientsCount: this.fcssOnly(entry.totalClientsCount),
         averageDatasetsPerClient: this.fcssOnly(entry.averageDatasetsPerClient),
+      };
+    });
+  }
+
+  @Get('/returning-history')
+  @ApiOperation({
+    summary:
+      'Get monthly history of returning clients by action (onboarded new datasets or extended deals), starting from the period start',
+  })
+  @ApiOkResponse({
+    type: [ClientsReturningHistoryEntry],
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  @ApiNotImplementedResponse({
+    description: 'History for FWSS is not implemented yet',
+  })
+  public async getReturningHistory(
+    @Query() { period = '30d', service = 'all' }: DashboardStatisticsRequest,
+  ): Promise<ClientsReturningHistoryEntry[]> {
+    this.validateServiceImplemented(service);
+
+    const fcss = await this.poRepService.getReturningClientsHistory(
+      this.getDashboardPeriods(period).current.periodStart,
+      'month',
+    );
+
+    return fcss.map((entry) => {
+      return {
+        date: entry.date,
+        returningClientsCount: this.fcssOnly(entry.returningClientsCount),
+        onboardedNewDatasetsClientsCount: this.fcssOnly(
+          entry.onboardedNewDatasetsClientsCount,
+        ),
+        extendedDealsClientsCount: this.fcssOnly(
+          entry.extendedDealsClientsCount,
+        ),
       };
     });
   }

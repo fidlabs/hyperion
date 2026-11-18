@@ -5,6 +5,31 @@ import {
   DashboardStatisticsRequest,
 } from '../base/types.controller-base';
 
+export class ClientsReturningHistoryEntry {
+  @ApiProperty({
+    description: 'Month start ISO date (UTC)',
+  })
+  date: string;
+
+  @ApiProperty({
+    description: `Count of clients that had a deal before the month and created
+      a new deal in the month`,
+  })
+  returningClientsCount: DashboardServiceValue;
+
+  @ApiProperty({
+    description: `Count of returning clients that onboarded a new dataset in the
+      month. Dataset is a unique pair of client and deal manifest hash.`,
+  })
+  onboardedNewDatasetsClientsCount: DashboardServiceValue;
+
+  @ApiProperty({
+    description: `Count of returning clients that only extended deals in the
+      month, i.e. created deals for datasets they already had`,
+  })
+  extendedDealsClientsCount: DashboardServiceValue;
+}
+
 export class ClientsHistoryRequest extends IntersectionType(
   DashboardStatisticsRequest,
   PoRepHistoryParameters,

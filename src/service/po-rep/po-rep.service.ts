@@ -10,6 +10,7 @@ import {
   createPoRepClientsHistoryQuery,
   createPoRepClientSpendQuery,
   createPoRepClientStatisticsQuery,
+  createPoRepReturningClientsHistoryQuery,
 } from 'src/db/queries/po-rep-clients.query';
 import { createPoRepDealsPaymentsHistoryQuery } from 'src/db/queries/po-rep-deals-payments-history.query';
 import { createPoRepDealsValueHistoryQuery } from 'src/db/queries/po-rep-deals-value-history.query';
@@ -69,6 +70,7 @@ import {
   PoRepProvidersSlaHistoryEntry,
   PoRepProvidersStatistics,
   PoRepProviderStorageStatistics,
+  PoRepReturningClientsHistoryEntry,
   PoRepSLIComplianceHistoryEntry,
   PoRepSLIComplianceHistoryParameters,
   PoRepSLIComplianceHistoryStateValues,
@@ -527,6 +529,46 @@ export class PoRepService {
             stringToNumber(result.total_datasets_count.toString()),
             totalClientsCount,
             null,
+          ),
+        };
+      })
+      .filter(
+        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+      );
+  }
+
+  public async getReturningClientsHistory(
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepReturningClientsHistoryEntry[]> {
+    const results = await createPoRepReturningClientsHistoryQuery(
+      this.queryBuilder,
+      {
+        genesisTimestamp: getFilecoinGenesisTimestamp({
+          testnet: this.isTestnet(),
+        }),
+        windowSize: windowSize,
+        periodStart: periodStart !== null ? periodStart.toJSDate() : null,
+      },
+    ).execute();
+
+    const firstWindowDate =
+      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+
+    return results
+      .map((result) => {
+        return {
+          date: DateTime.fromJSDate(result.window_start, {
+            zone: 'UTC',
+          }).toISODate(),
+          returningClientsCount: stringToNumber(
+            result.returning_clients_count.toString(),
+          ),
+          onboardedNewDatasetsClientsCount: stringToNumber(
+            result.onboarded_new_datasets_clients_count.toString(),
+          ),
+          extendedDealsClientsCount: stringToNumber(
+            result.extended_deals_clients_count.toString(),
           ),
         };
       })
