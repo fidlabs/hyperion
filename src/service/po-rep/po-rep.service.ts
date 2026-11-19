@@ -7,8 +7,12 @@ import { InjectQueryBuilder, QueryBuilder } from 'src/db';
 import { PrismaService } from 'src/db/prisma.service';
 import {
   createPoRepClientDealsHistoryQuery,
+  createPoRepClientsHistoryQuery,
+  createPoRepClientsListQuery,
   createPoRepClientSpendQuery,
+  createPoRepClientsStatisticsQuery,
   createPoRepClientStatisticsQuery,
+  createPoRepReturningClientsHistoryQuery,
 } from 'src/db/queries/po-rep-clients.query';
 import { createPoRepDealsPaymentsHistoryQuery } from 'src/db/queries/po-rep-deals-payments-history.query';
 import { createPoRepDealsValueHistoryQuery } from 'src/db/queries/po-rep-deals-value-history.query';
@@ -23,6 +27,7 @@ import {
   createPoRepProvidersHistoryQuery,
 } from 'src/db/queries/po-rep-providers-statistics.query';
 import {
+  ARCHIVE_NODE_CLIENT,
   PoRepConfig,
   PoRepPublicClient,
   RECENT_NODE_CLIENT,
@@ -45,9 +50,15 @@ import { UrlFinderDealMeasurement } from '../url-finder/types.url-finder';
 import { UrlFinderService } from '../url-finder/url-finder.service';
 import {
   DealRailState,
+  PaginationParameters,
   PoRepClient,
   PoRepClientDealsHistoryEntry,
   PoRepClientDealsSla,
+  PoRepClientsHistoryEntry,
+  PoRepClientsList,
+  PoRepClientsRevenueConcentrationHistoryEntry,
+  PoRepClientsStatistics,
+  PoRepClientWalletStatus,
   PoRepClientSlaHistoryEntry,
   PoRepComplianceState,
   PoRepDeal,
@@ -67,12 +78,14 @@ import {
   PoRepProvidersSlaHistoryEntry,
   PoRepProvidersStatistics,
   PoRepProviderStorageStatistics,
+  PoRepReturningClientsHistoryEntry,
   PoRepSLIComplianceHistoryEntry,
   PoRepSLIComplianceHistoryParameters,
   PoRepSLIComplianceHistoryStateValues,
   PoRepSLIIndicator,
 } from './types.po-rep';
 import { ERC20TokenInfoService } from '../erc20-token-info/erc20-token-info.service';
+import FilecoinPayV1ABI from 'src/po-rep-indexer/abis/filecoin-pay-v1-abi';
 
 interface TokenDetails {
   tokenAddress: string;
@@ -106,6 +119,8 @@ interface DealsComplianceWindow {
 }
 
 const Decimal = PrismaRuntime.Decimal;
+const topClientsCount = 10;
+const walletLowBalanceDays = 30;
 
 @Injectable()
 export class PoRepService {
@@ -115,6 +130,8 @@ export class PoRepService {
     private readonly priceOracle: PoRepPriceOracleService,
     @Inject(RECENT_NODE_CLIENT)
     private readonly recentNodeClient: PoRepPublicClient,
+    @Inject(ARCHIVE_NODE_CLIENT)
+    private readonly archiveNodeClient: PoRepPublicClient,
     @InjectQueryBuilder() private readonly queryBuilder: QueryBuilder,
     private readonly urlFinderService: UrlFinderService,
     private readonly configService: ConfigService<PoRepConfig, true>,
@@ -380,6 +397,66 @@ export class PoRepService {
     );
   }
 
+  public async getClientsStatistics(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<PoRepClientsStatistics> {
+    const periodEndEpoch = dateToFilecoinBlockHeight(periodEnd.toJSDate(), {
+      testnet: this.isTestnet(),
+    });
+    const isCurrentPeriod = periodEnd >= DateTime.utc().minus({ hours: 1 });
+
+    const [statistics, clients] = await Promise.all([
+      createPoRepClientsStatisticsQuery(this.queryBuilder, {
+        periodStartEpoch:
+          periodStart !== null
+            ? dateToFilecoinBlockHeight(periodStart.toJSDate(), {
+                testnet: this.isTestnet(),
+              })
+            : null,
+        periodEndEpoch: periodEndEpoch,
+      }).executeTakeFirstOrThrow(),
+      createPoRepClientsListQuery(this.queryBuilder, {
+        periodEndEpoch: periodEndEpoch,
+      }).execute(),
+    ]);
+
+    const clientsAccountsInfo = await this.getClientsAccountsInfo(
+      clients.map((client) => {
+        return {
+          clientAddress: client.client_address,
+          tokensAddresses: client.tokens_addresses ?? [],
+        };
+      }),
+      isCurrentPeriod ? null : BigInt(periodEndEpoch),
+    );
+    const totalClientsCount = stringToNumber(
+      statistics.clients_count.toString(),
+    );
+    const fundedWalletsCount = clientsAccountsInfo.filter(
+      (clientAccountsInfo) =>
+        clientAccountsInfo.some(([, currentFunds]) => currentFunds > 0n),
+    ).length;
+
+    return {
+      totalClientsCount: totalClientsCount,
+      averageDatasetsPerClient: safeDiv(
+        stringToNumber(statistics.datasets_count.toString()),
+        totalClientsCount,
+        null,
+      ),
+      returningClientsCount: stringToNumber(
+        statistics.returning_clients_count.toString(),
+      ),
+      fundedWalletsCount: fundedWalletsCount,
+      fundedWalletsPercentage: safeDiv(
+        fundedWalletsCount,
+        totalClientsCount,
+        null,
+      ),
+    };
+  }
+
   public async getProvidersStatistics(
     periodStart: DateTime | null,
     periodEnd: DateTime,
@@ -492,6 +569,300 @@ export class PoRepService {
       .filter(
         (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
       );
+  }
+
+  public async getClientsHistory(
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepClientsHistoryEntry[]> {
+    const results = await createPoRepClientsHistoryQuery(this.queryBuilder, {
+      genesisTimestamp: getFilecoinGenesisTimestamp({
+        testnet: this.isTestnet(),
+      }),
+      windowSize: windowSize,
+      periodStart: periodStart !== null ? periodStart.toJSDate() : null,
+    }).execute();
+
+    const firstWindowDate =
+      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+
+    return results
+      .map((result) => {
+        const totalClientsCount = stringToNumber(
+          result.total_clients_count.toString(),
+        );
+
+        return {
+          date: DateTime.fromJSDate(result.window_start, {
+            zone: 'UTC',
+          }).toISODate(),
+          newClientsCount: stringToNumber(result.new_clients_count.toString()),
+          totalClientsCount: totalClientsCount,
+          averageDatasetsPerClient: safeDiv(
+            stringToNumber(result.total_datasets_count.toString()),
+            totalClientsCount,
+            null,
+          ),
+        };
+      })
+      .filter(
+        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+      );
+  }
+
+  public async getReturningClientsHistory(
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepReturningClientsHistoryEntry[]> {
+    const results = await createPoRepReturningClientsHistoryQuery(
+      this.queryBuilder,
+      {
+        genesisTimestamp: getFilecoinGenesisTimestamp({
+          testnet: this.isTestnet(),
+        }),
+        windowSize: windowSize,
+        periodStart: periodStart !== null ? periodStart.toJSDate() : null,
+      },
+    ).execute();
+
+    const firstWindowDate =
+      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+
+    return results
+      .map((result) => {
+        return {
+          date: DateTime.fromJSDate(result.window_start, {
+            zone: 'UTC',
+          }).toISODate(),
+          returningClientsCount: stringToNumber(
+            result.returning_clients_count.toString(),
+          ),
+          onboardedNewDatasetsClientsCount: stringToNumber(
+            result.onboarded_new_datasets_clients_count.toString(),
+          ),
+          extendedDealsClientsCount: stringToNumber(
+            result.extended_deals_clients_count.toString(),
+          ),
+        };
+      })
+      .filter(
+        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+      );
+  }
+
+  public async getClientsRevenueConcentrationHistory(
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepClientsRevenueConcentrationHistoryEntry[]> {
+    const [earliestDeal, data] = await Promise.all([
+      this.prismaService.po_rep_deal.findFirst({
+        orderBy: {
+          proposedAtBlock: 'asc',
+        },
+      }),
+      createPoRepDealsPaymentsHistoryQuery(this.queryBuilder, {
+        genesisTimestamp: getFilecoinGenesisTimestamp({
+          testnet: this.isTestnet(),
+        }),
+        netAmount: false,
+        windowSize: windowSize,
+      }).execute(),
+    ]);
+
+    if (!earliestDeal) {
+      return [];
+    }
+
+    const startDate = DateTime.fromJSDate(
+      // eslint-disable-next-line no-restricted-syntax
+      filecoinBlockHeightToDate(Number(earliestDeal.proposedAtBlock), {
+        testnet: this.isTestnet(),
+      }),
+    )
+      .toUTC()
+      .startOf(windowSize);
+    const endDate = DateTime.utc().startOf(windowSize);
+    const entriesCount =
+      endDate.diff(startDate, windowSize)[`${windowSize}s`] + 1;
+    const firstWindowDate =
+      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+
+    const uniqueTokens = uniq(data.map((item) => item.token_address));
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    const dataByWindow = groupBy(
+      data.filter((item) => item.window_start !== null),
+      (item) => DateTime.fromJSDate(item.window_start).toISODate(),
+    );
+    const clientsRevenueUSD = new Map<string, PrismaRuntime.Decimal>();
+
+    return [...new Array(entriesCount)]
+      .map((_, index) => {
+        const entryISODate = startDate
+          .plus({ [windowSize]: index })
+          .toISODate();
+
+        (dataByWindow[entryISODate] ?? []).forEach((item) => {
+          const tokenDetails = tokensDetails.get(item.token_address);
+          const tokenExchangeRateUSD = tokensExchangeRatesUSD.get(
+            item.token_address,
+          );
+
+          if (!tokenDetails || !tokenExchangeRateUSD) {
+            throw new Error(
+              `Exchange rate or info not found for token "${item.token_address}"`,
+            );
+          }
+
+          const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
+
+          clientsRevenueUSD.set(
+            item.client_address,
+            (clientsRevenueUSD.get(item.client_address) ?? Decimal(0)).add(
+              Decimal(item.window_total.toString())
+                .div(tokenExponent.toString())
+                .mul(tokenExchangeRateUSD),
+            ),
+          );
+        });
+
+        const revenuesUSD = [...clientsRevenueUSD.values()].sort((a, b) =>
+          b.comparedTo(a),
+        );
+        const totalRevenueUSD = revenuesUSD.reduce(
+          (totalUSD, revenueUSD) => totalUSD.add(revenueUSD),
+          Decimal(0),
+        );
+        const topClientsRevenueUSD = revenuesUSD
+          .slice(0, topClientsCount)
+          .reduce(
+            (totalUSD, revenueUSD) => totalUSD.add(revenueUSD),
+            Decimal(0),
+          );
+
+        return {
+          date: entryISODate,
+          topClientsRevenueShare: totalRevenueUSD.isZero()
+            ? null
+            : topClientsRevenueUSD.div(totalRevenueUSD).toNumber(),
+        };
+      })
+      .filter(
+        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+      );
+  }
+
+  public async getClients({
+    limit = 0,
+    page = 1,
+  }: PaginationParameters): Promise<PoRepClientsList> {
+    const baseQuery = createPoRepClientsListQuery(this.queryBuilder);
+    let resultsQuery = baseQuery
+      .orderBy('datasets_count', 'desc')
+      .orderBy('client_address', 'asc');
+
+    if (limit) {
+      resultsQuery = resultsQuery.limit(limit).offset((page - 1) * limit);
+    }
+
+    const [results, countResult] = await Promise.all([
+      resultsQuery.execute(),
+      this.queryBuilder
+        .selectFrom('po_rep_deal')
+        .select((eb) => [eb.fn.count('client').distinct().as('count')])
+        .executeTakeFirstOrThrow(),
+    ]);
+
+    const totalCount = stringToNumber(countResult.count.toString()) ?? 0;
+    const walletsStatuses = await this.getClientsWalletsStatuses(
+      results.map((result) => {
+        return {
+          clientAddress: result.client_address,
+          tokensAddresses: result.tokens_addresses ?? [],
+        };
+      }),
+    );
+
+    return {
+      data: results.map((result, index) => {
+        return {
+          clientAddress: result.client_address,
+          datasetsCount: stringToNumber(result.datasets_count.toString()),
+          walletStatus: walletsStatuses[index],
+        };
+      }),
+      pagination: {
+        page: page,
+        pagesCount: limit ? Math.ceil(totalCount / limit) : 1,
+        totalCount: totalCount,
+      },
+    };
+  }
+
+  private getClientsAccountsInfo(
+    clients: { clientAddress: string; tokensAddresses: string[] }[],
+    blockNumber: bigint | null = null,
+  ) {
+    const nodeClient =
+      blockNumber !== null ? this.archiveNodeClient : this.recentNodeClient;
+
+    return Promise.all(
+      clients.map(({ clientAddress, tokensAddresses }) =>
+        Promise.all(
+          tokensAddresses.map((tokenAddress) =>
+            nodeClient.readContract({
+              address: this.configService.get('FILECOIN_PAY_CONTRACT_ADDRESS'),
+              abi: FilecoinPayV1ABI,
+              functionName: 'getAccountInfoIfSettled',
+              args: [getAddress(tokenAddress), getAddress(clientAddress)],
+              blockNumber: blockNumber ?? undefined,
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  private async getClientsWalletsStatuses(
+    clients: { clientAddress: string; tokensAddresses: string[] }[],
+  ): Promise<PoRepClientWalletStatus[]> {
+    const clientsAccountsInfo = await this.getClientsAccountsInfo(clients);
+    const lowBalanceEpoch = BigInt(
+      dateToFilecoinBlockHeight(
+        DateTime.utc().plus({ days: walletLowBalanceDays }).toJSDate(),
+        { testnet: this.isTestnet() },
+      ),
+    );
+
+    return clientsAccountsInfo.map((clientAccountsInfo) => {
+      const setUpAccountsInfo = clientAccountsInfo.filter(
+        ([, currentFunds, , currentLockupRate]) =>
+          currentFunds > 0n || currentLockupRate > 0n,
+      );
+
+      if (setUpAccountsInfo.length === 0) {
+        return 'not_set_up';
+      }
+
+      if (
+        setUpAccountsInfo.some(([, , availableFunds]) => availableFunds === 0n)
+      ) {
+        return 'empty';
+      }
+
+      if (
+        setUpAccountsInfo.some(
+          ([fundedUntilEpoch]) => fundedUntilEpoch < lowBalanceEpoch,
+        )
+      ) {
+        return 'low_balance';
+      }
+
+      return 'funded';
+    });
   }
 
   public async getDealsPaymentsSummaryHistory({

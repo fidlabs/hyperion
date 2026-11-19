@@ -32,7 +32,7 @@ function transformOptionalInt({
   return parseInt(String(value), 10);
 }
 
-class PaginationParameters {
+export class PaginationParameters {
   @ApiPropertyOptional({
     description: 'Number of items per page; default is no pagination',
     type: 'number',
@@ -58,7 +58,7 @@ class PaginationParameters {
   page?: number;
 }
 
-class PaginationMetadata {
+export class PaginationMetadata {
   @ApiProperty({
     description: 'Current pagination page.',
     type: 'integer',
@@ -531,6 +531,47 @@ export interface PoRepProvidersHistoryEntry {
   newProvidersCount: number;
   totalProvidersCount: number;
   activeProvidersCount: number;
+}
+
+export interface PoRepClientsHistoryEntry {
+  date: string;
+  newClientsCount: number;
+  totalClientsCount: number;
+  averageDatasetsPerClient: number | null;
+}
+
+export interface PoRepReturningClientsHistoryEntry {
+  date: string;
+  returningClientsCount: number;
+  onboardedNewDatasetsClientsCount: number;
+  extendedDealsClientsCount: number;
+}
+
+export interface PoRepClientsStatistics {
+  totalClientsCount: number;
+  averageDatasetsPerClient: number | null;
+  returningClientsCount: number;
+  fundedWalletsCount: number;
+  fundedWalletsPercentage: number | null;
+}
+
+export interface PoRepClientsRevenueConcentrationHistoryEntry {
+  date: string;
+  topClientsRevenueShare: number | null;
+}
+
+export type PoRepClientWalletStatus =
+  'funded' | 'low_balance' | 'empty' | 'not_set_up';
+
+export interface PoRepClientsListEntry {
+  clientAddress: string;
+  datasetsCount: number;
+  walletStatus: PoRepClientWalletStatus;
+}
+
+export interface PoRepClientsList {
+  data: PoRepClientsListEntry[];
+  pagination: PaginationMetadata;
 }
 
 export interface PoRepProvidersEarningsAgainstSla {
