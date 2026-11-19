@@ -6,6 +6,10 @@ import {
   PoRepHistoryParameters,
 } from 'src/service/po-rep/types.po-rep';
 import {
+  DashboardPeriod,
+  dashboardPeriods,
+  DashboardService,
+  dashboardServices,
   DashboardServiceValue,
   DashboardStatisticsRequest,
 } from '../base/types.controller-base';
@@ -117,4 +121,80 @@ export class ClientsList {
     type: PaginationMetadata,
   })
   pagination: PaginationMetadata;
+}
+
+export class ClientsPeriodStatistics {
+  @ApiProperty({
+    description: 'ISO Datetime of the period start, null for "all" period',
+    type: Date,
+    nullable: true,
+  })
+  periodStart: Date | null;
+
+  @ApiProperty({
+    description: 'ISO Datetime of the period end',
+  })
+  periodEnd: Date;
+
+  @ApiProperty({
+    description: `Count of clients with at least one deal up to period end.
+      Client is a single payer wallet.`,
+  })
+  totalClientsCount: DashboardServiceValue;
+
+  @ApiProperty({
+    description: `Average count of datasets per client up to period end. Dataset
+      is a unique pair of client and deal manifest hash. Null when there are no
+      clients yet.`,
+  })
+  averageDatasetsPerClient: DashboardServiceValue;
+
+  @ApiProperty({
+    description: `Count of clients that had a deal before the period and created
+      a new deal in the period, either for a new dataset or extending a dataset
+      they already had. For "all" period, count of clients that created more
+      than one deal.`,
+  })
+  returningClientsCount: DashboardServiceValue;
+
+  @ApiProperty({
+    description: `Count of clients with a positive Filecoin Pay account balance
+      at period end`,
+  })
+  fundedWalletsCount: DashboardServiceValue;
+
+  @ApiProperty({
+    description: `Share of clients with a positive Filecoin Pay account balance
+      at period end. Null when there are no clients yet.`,
+  })
+  fundedWalletsPercentage: DashboardServiceValue;
+}
+
+export class ClientsStatistics {
+  @ApiProperty({
+    description: 'Period of the statistics',
+    enum: dashboardPeriods,
+    enumName: 'DashboardPeriod',
+  })
+  period: DashboardPeriod;
+
+  @ApiProperty({
+    description: 'Service of the statistics',
+    enum: dashboardServices,
+    enumName: 'DashboardService',
+  })
+  service: DashboardService;
+
+  @ApiProperty({
+    description: 'Statistics for the requested period',
+  })
+  current: ClientsPeriodStatistics;
+
+  @ApiProperty({
+    description:
+      'Statistics for the previous period of the same length, null for "all" period',
+    type: ClientsPeriodStatistics,
+    nullable: true,
+  })
+  previous: ClientsPeriodStatistics | null;
 }

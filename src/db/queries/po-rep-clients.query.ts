@@ -1,3 +1,4 @@
+import { sql } from 'kysely';
 import { QueryBuilder } from '../query-builder';
 import { castToInterval } from './helpers/cast-to-inteval.helper';
 import { filecoinBlockNumberToTimestamp } from './helpers/filecoin-block-number-to-timestamp.helper';
@@ -345,7 +346,19 @@ export function createPoRepReturningClientsHistoryQuery(
     .orderBy('wd.window_start');
 }
 
-export function createPoRepClientsListQuery(qb: QueryBuilder) {
+export interface CreatePoRepClientsListQueryParameters {
+  periodEndEpoch?: number | null;
+}
+
+export interface CreatePoRepClientsStatisticsQueryParameters {
+  periodStartEpoch: number | null;
+  periodEndEpoch: number;
+}
+
+export function createPoRepClientsListQuery(
+  qb: QueryBuilder,
+  { periodEndEpoch = null }: CreatePoRepClientsListQueryParameters = {},
+) {
   return qb
     .selectFrom('po_rep_deal as d')
     .leftJoin('filecoin_pay_rail as r', 'r.railId', 'd.railId')
@@ -358,5 +371,60 @@ export function createPoRepClientsListQuery(qb: QueryBuilder) {
         .filterWhere('r.token', 'is not', null)
         .as('tokens_addresses'),
     ])
+    .where((eb) =>
+      periodEndEpoch !== null
+        ? eb('d.proposedAtBlock', '<=', periodEndEpoch.toString())
+        : eb.val(true),
+    )
     .groupBy('d.client');
+}
+
+export function createPoRepClientsStatisticsQuery(
+  qb: QueryBuilder,
+  {
+    periodStartEpoch,
+    periodEndEpoch,
+  }: CreatePoRepClientsStatisticsQueryParameters,
+) {
+  const dealsCTE = qb
+    .selectFrom('po_rep_deal')
+    .select((eb) => [
+      'client',
+      'manifestHash',
+      'proposedAtBlock',
+      eb.fn
+        .min('proposedAtBlock')
+        .over((ob) => ob.partitionBy('client'))
+        .as('client_first_deal_epoch'),
+    ])
+    .where('proposedAtBlock', '<=', periodEndEpoch.toString());
+
+  return qb
+    .with('d', dealsCTE)
+    .selectFrom('d')
+    .select((eb) => [
+      eb.fn.count('d.client').distinct().as('clients_count'),
+      sql<string>`count(distinct (${eb.ref('d.client')}, ${eb.ref('d.manifestHash')}))`.as(
+        'datasets_count',
+      ),
+      eb.fn
+        .count('d.client')
+        .distinct()
+        .filterWhere((eb) =>
+          eb.and([
+            eb('d.proposedAtBlock', '>', eb.ref('d.client_first_deal_epoch')),
+            periodStartEpoch !== null
+              ? eb.and([
+                  eb('d.proposedAtBlock', '>=', periodStartEpoch.toString()),
+                  eb(
+                    'd.client_first_deal_epoch',
+                    '<',
+                    periodStartEpoch.toString(),
+                  ),
+                ])
+              : eb.val(true),
+          ]),
+        )
+        .as('returning_clients_count'),
+    ]);
 }
