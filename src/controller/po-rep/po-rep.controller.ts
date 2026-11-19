@@ -17,29 +17,29 @@ import {
 } from '@nestjs/swagger';
 
 import {
-  PoRepClient,
-  PoRepClientDealsHistoryEntry,
-  PoRepClientDealsSla,
-  PoRepClientParameters,
-  PoRepClientSlaHistoryEntry,
-  PoRepDealsList,
-  PoRepDealsListParameters,
-  PoRepDealsPaymentsHistoryEntry,
-  PoRepDealsPaymentsHistoryParameters,
-  PoRepDealsValueHistoryEntry,
-  PoRepDealsValueHistoryParameters,
-  PoRepOnboardedDataHistoryEntry,
-  PoRepOnboardedDataHistoryParameters,
-  PoRepProviderComplianceStatistics,
-  PoRepProviderEconomicsStatistics,
-  PoRepProviderStorageStatistics,
-  PoRepSLIComplianceHistoryEntry,
-  PoRepSLIComplianceHistoryParameters,
+  GetPoRepClientResponse,
+  GetClientDealsHistoryResponse,
+  GetClientDealsSlaResponse,
+  GetPoRepClientRequest,
+  GetClientSlaHistoryResponse,
+  GetPoRepDealsResponse,
+  GetPoRepDealsRequest,
+  GetPaymentsHistoryResponse,
+  GetPaymentsHistoryRequest,
+  GetDealsValueHistoryResponse,
+  GetDealsValueHistoryRequest,
+  GetOnboardedDataHistoryResponse,
+  GetOnboardedDataHistoryRequest,
+  GetProviderComplianceStatisticsResponse,
+  GetProviderEconomicsStatisticsResponse,
+  GetProviderStorageStatisticsResponse,
+  GetSLIComplianceHistoryResponse,
+  GetSLIComplianceHistoryRequest,
 } from 'src/service/po-rep/types.po-rep';
 
 import {
-  PoRepClientHistoryParameters,
-  PoRepProviderResourceParameters,
+  PoRepClientHistoryRequest,
+  GetProviderStatisticsRequest,
 } from './types.po-rep';
 
 import { Cache, CACHE_MANAGER, CacheTTL } from '@nestjs/cache-manager';
@@ -59,11 +59,11 @@ export class PoRepController extends ControllerBase {
   @Get('/deals')
   @UseInterceptors(ClassSerializerInterceptor)
   @ApiOkResponse({
-    type: PoRepDealsList,
+    type: GetPoRepDealsResponse,
   })
-  public getDeals(
-    @Query() query: PoRepDealsListParameters,
-  ): Promise<PoRepDealsList> {
+  public getPoRepDeals(
+    @Query() query: GetPoRepDealsRequest,
+  ): Promise<GetPoRepDealsResponse> {
     return this.poRepService.getDeals(query);
   }
 
@@ -72,11 +72,11 @@ export class PoRepController extends ControllerBase {
     summary: 'Get the history of onboarded data for PoRep deals',
   })
   @ApiOkResponse({
-    type: [PoRepOnboardedDataHistoryEntry],
+    type: [GetOnboardedDataHistoryResponse],
   })
   public async getOnboardedDataHistory(
-    @Query() query: PoRepOnboardedDataHistoryParameters,
-  ): Promise<PoRepOnboardedDataHistoryEntry[]> {
+    @Query() query: GetOnboardedDataHistoryRequest,
+  ): Promise<GetOnboardedDataHistoryResponse[]> {
     return this.poRepService.getOnboardedDataHistory(query);
   }
 
@@ -85,11 +85,11 @@ export class PoRepController extends ControllerBase {
     summary: 'Get the history of PoRep deals value',
   })
   @ApiOkResponse({
-    type: [PoRepDealsValueHistoryEntry],
+    type: [GetDealsValueHistoryResponse],
   })
   public async getDealsValueHistory(
-    @Query() query: PoRepDealsValueHistoryParameters,
-  ): Promise<PoRepDealsValueHistoryEntry[]> {
+    @Query() query: GetDealsValueHistoryRequest,
+  ): Promise<GetDealsValueHistoryResponse[]> {
     return this.poRepService.getDealsValueHistory(query);
   }
 
@@ -99,12 +99,11 @@ export class PoRepController extends ControllerBase {
       'Get the history of USD amounts paid to providers for deal settlements',
   })
   @ApiOkResponse({
-    type: [PoRepDealsPaymentsHistoryEntry],
+    type: [GetPaymentsHistoryResponse],
   })
   public async getPaymentsHistory(
-    @Query()
-    query: PoRepDealsPaymentsHistoryParameters,
-  ): Promise<PoRepDealsPaymentsHistoryEntry[]> {
+    @Query() query: GetPaymentsHistoryRequest,
+  ): Promise<GetPaymentsHistoryResponse[]> {
     return this.poRepService.getDealsPaymentsSummaryHistory(query);
   }
 
@@ -114,14 +113,14 @@ export class PoRepController extends ControllerBase {
       'Get the history of deals SLI compliance, optionally filtered by Provider ID or Deal ID',
   })
   @ApiOkResponse({
-    type: [PoRepSLIComplianceHistoryEntry],
+    type: [GetSLIComplianceHistoryResponse],
   })
   @ApiBadRequestResponse({
     description: 'Query parameters validation error',
   })
   public async getSLIComplianceHistory(
-    @Query() query: PoRepSLIComplianceHistoryParameters,
-  ): Promise<PoRepSLIComplianceHistoryEntry[]> {
+    @Query() query: GetSLIComplianceHistoryRequest,
+  ): Promise<GetSLIComplianceHistoryResponse[]> {
     return this.poRepService.getSLIComplianceHistory(query);
   }
 
@@ -131,7 +130,7 @@ export class PoRepController extends ControllerBase {
   })
   @ApiOkResponse({
     description: 'PoRep provider compliance statistics',
-    type: PoRepProviderComplianceStatistics,
+    type: GetProviderComplianceStatisticsResponse,
   })
   @ApiBadRequestResponse({
     description: 'Error response when invalid provider id is given.',
@@ -140,15 +139,15 @@ export class PoRepController extends ControllerBase {
     description: 'Error response when provider with given id does not exist.',
   })
   public async getProviderComplianceStatistics(
-    @Param() parameters: PoRepProviderResourceParameters,
-  ): Promise<PoRepProviderComplianceStatistics> {
+    @Param() query: GetProviderStatisticsRequest,
+  ): Promise<GetProviderComplianceStatisticsResponse> {
     const stats = await this.poRepService.getProviderComplianceStatistics(
-      parameters.providerId,
+      query.providerId,
     );
 
     if (!stats) {
       throw new NotFoundException(
-        `PoRep provider with ID "${parameters.providerId}" does not exist.`,
+        `PoRep provider with ID "${query.providerId}" does not exist.`,
       );
     }
 
@@ -161,7 +160,7 @@ export class PoRepController extends ControllerBase {
     summary: 'Get aggregates of a single PoRep market client (payer wallet)',
   })
   @ApiOkResponse({
-    type: PoRepClient,
+    type: GetPoRepClientResponse,
   })
   @ApiBadRequestResponse({
     description: 'Invalid client address',
@@ -169,14 +168,14 @@ export class PoRepController extends ControllerBase {
   @ApiNotFoundResponse({
     description: 'Client has no PoRep market deals',
   })
-  public async getClient(
-    @Param() { clientAddress }: PoRepClientParameters,
-  ): Promise<PoRepClient> {
-    const client = await this.poRepService.getClient(clientAddress);
+  public async getPoRepClient(
+    @Param() query: GetPoRepClientRequest,
+  ): Promise<GetPoRepClientResponse> {
+    const client = await this.poRepService.getClient(query.clientAddress);
 
     if (!client) {
       throw new NotFoundException(
-        `PoRep client with address "${clientAddress}" does not exist`,
+        `PoRep client with address "${query.clientAddress}" does not exist`,
       );
     }
 
@@ -189,7 +188,7 @@ export class PoRepController extends ControllerBase {
       'Get the history of deals created by PoRep market client, starting from the period start',
   })
   @ApiOkResponse({
-    type: [PoRepClientDealsHistoryEntry],
+    type: [GetClientDealsHistoryResponse],
   })
   @ApiBadRequestResponse({
     description: 'Invalid client address or query parameters',
@@ -198,19 +197,19 @@ export class PoRepController extends ControllerBase {
     description: 'Client has no PoRep market deals',
   })
   public async getClientDealsHistory(
-    @Param() { clientAddress }: PoRepClientParameters,
+    @Param() query: GetPoRepClientRequest,
     @Query()
-    { period = '30d', windowSize = 'day' }: PoRepClientHistoryParameters,
-  ): Promise<PoRepClientDealsHistoryEntry[]> {
+    { period = '30d', windowSize = 'day' }: PoRepClientHistoryRequest,
+  ): Promise<GetClientDealsHistoryResponse[]> {
     const history = await this.poRepService.getClientDealsHistory(
-      clientAddress,
+      query.clientAddress,
       this.getDashboardPeriods(period).current.periodStart,
       windowSize,
     );
 
     if (!history) {
       throw new NotFoundException(
-        `PoRep client with address "${clientAddress}" does not exist`,
+        `PoRep client with address "${query.clientAddress}" does not exist`,
       );
     }
 
@@ -224,7 +223,7 @@ export class PoRepController extends ControllerBase {
       'starting from the period start',
   })
   @ApiOkResponse({
-    type: [PoRepClientSlaHistoryEntry],
+    type: [GetClientSlaHistoryResponse],
   })
   @ApiBadRequestResponse({
     description: 'Invalid client address or query parameters',
@@ -233,19 +232,19 @@ export class PoRepController extends ControllerBase {
     description: 'Client has no PoRep market deals',
   })
   public async getClientSlaHistory(
-    @Param() { clientAddress }: PoRepClientParameters,
+    @Param() query: GetPoRepClientRequest,
     @Query()
-    { period = '30d', windowSize = 'day' }: PoRepClientHistoryParameters,
-  ): Promise<PoRepClientSlaHistoryEntry[]> {
+    { period = '30d', windowSize = 'day' }: PoRepClientHistoryRequest,
+  ): Promise<GetClientSlaHistoryResponse[]> {
     const history = await this.poRepService.getClientSlaHistory(
-      clientAddress,
+      query.clientAddress,
       this.getDashboardPeriods(period).current.periodStart,
       windowSize,
     );
 
     if (!history) {
       throw new NotFoundException(
-        `PoRep client with address "${clientAddress}" does not exist`,
+        `PoRep client with address "${query.clientAddress}" does not exist`,
       );
     }
 
@@ -258,7 +257,7 @@ export class PoRepController extends ControllerBase {
       'Get PoRep market client deals with their average SLA in the last 30 days',
   })
   @ApiOkResponse({
-    type: PoRepClientDealsSla,
+    type: GetClientDealsSlaResponse,
   })
   @ApiBadRequestResponse({
     description: 'Invalid client address',
@@ -267,13 +266,15 @@ export class PoRepController extends ControllerBase {
     description: 'Client has no PoRep market deals',
   })
   public async getClientDealsSla(
-    @Param() { clientAddress }: PoRepClientParameters,
-  ): Promise<PoRepClientDealsSla> {
-    const dealsSla = await this.poRepService.getClientDealsSla(clientAddress);
+    @Param() query: GetPoRepClientRequest,
+  ): Promise<GetClientDealsSlaResponse> {
+    const dealsSla = await this.poRepService.getClientDealsSla(
+      query.clientAddress,
+    );
 
     if (!dealsSla) {
       throw new NotFoundException(
-        `PoRep client with address "${clientAddress}" does not exist`,
+        `PoRep client with address "${query.clientAddress}" does not exist`,
       );
     }
 
@@ -286,7 +287,7 @@ export class PoRepController extends ControllerBase {
   })
   @ApiOkResponse({
     description: 'PoRep provider storage statistics',
-    type: PoRepProviderStorageStatistics,
+    type: GetProviderStorageStatisticsResponse,
   })
   @ApiBadRequestResponse({
     description: 'Error response when invalid provider id is given.',
@@ -295,15 +296,15 @@ export class PoRepController extends ControllerBase {
     description: 'Error response when provider with given id does not exist.',
   })
   public async getProviderStorageStatistics(
-    @Param() parameters: PoRepProviderResourceParameters,
-  ): Promise<PoRepProviderStorageStatistics> {
+    @Param() query: GetProviderStatisticsRequest,
+  ): Promise<GetProviderStorageStatisticsResponse> {
     const stats = await this.poRepService.getProviderStorageStatistics(
-      parameters.providerId,
+      query.providerId,
     );
 
     if (!stats) {
       throw new NotFoundException(
-        `PoRep provider with ID "${parameters.providerId}" does not exist.`,
+        `PoRep provider with ID "${query.providerId}" does not exist.`,
       );
     }
 
@@ -316,7 +317,7 @@ export class PoRepController extends ControllerBase {
   })
   @ApiOkResponse({
     description: 'PoRep provider economics statistics',
-    type: PoRepProviderEconomicsStatistics,
+    type: GetProviderEconomicsStatisticsResponse,
   })
   @ApiBadRequestResponse({
     description: 'Error response when invalid provider id is given.',
@@ -325,15 +326,15 @@ export class PoRepController extends ControllerBase {
     description: 'Error response when provider with given id does not exist.',
   })
   public async getProviderEconomicsStatistics(
-    @Param() parameters: PoRepProviderResourceParameters,
-  ): Promise<PoRepProviderEconomicsStatistics> {
+    @Param() query: GetProviderStatisticsRequest,
+  ): Promise<GetProviderEconomicsStatisticsResponse> {
     const stats = this.poRepService.getProviderEconomicsStatistics(
-      parameters.providerId,
+      query.providerId,
     );
 
     if (!stats) {
       throw new NotFoundException(
-        `PoRep provider with ID "${parameters.providerId}" does not exist.`,
+        `PoRep provider with ID "${query.providerId}" does not exist.`,
       );
     }
 

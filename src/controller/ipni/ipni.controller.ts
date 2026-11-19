@@ -4,7 +4,7 @@ import { ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 import { ControllerBase } from '../base/controller-base';
 import { PrismaService } from 'src/db/prisma.service';
 import { getIpniReportingWeekly } from '../../generated/prisma/sql';
-import { AggregatedProvidersIPNIReportingStatusWeekly } from './types.ipni';
+import { GetAggregatedIPNIStatusWeeklyResponse } from './types.ipni';
 
 @Controller('ipni')
 @CacheTTL(1000 * 60 * 60) // 1 hour
@@ -23,9 +23,9 @@ export class IPNIController extends ControllerBase {
   })
   @ApiOkResponse({
     description: 'Aggregated storage providers IPNI reporting status over time',
-    type: AggregatedProvidersIPNIReportingStatusWeekly,
+    type: GetAggregatedIPNIStatusWeeklyResponse,
   })
-  public async getAggregatedProvidersIPNIReportingStatusWeekly(): Promise<AggregatedProvidersIPNIReportingStatusWeekly> {
+  public async getAggregatedIPNIStatusWeekly(): Promise<GetAggregatedIPNIStatusWeeklyResponse> {
     const result = await this.prismaService.$queryRawTyped(
       getIpniReportingWeekly(),
     );

@@ -3,7 +3,7 @@ import { PoRepHistoryParameters } from 'src/service/po-rep/types.po-rep';
 import { F0IdInput, IsF0IdInput } from 'src/utils/validators';
 import { DashboardStatisticsRequest } from '../base/types.controller-base';
 
-export class PoRepProviderResourceParameters {
+export class GetProviderStatisticsRequest {
   @ApiProperty({
     description: `Provider ID for which statistic should be returned. Either
       numerical id or f0 address.`,
@@ -13,7 +13,7 @@ export class PoRepProviderResourceParameters {
   providerId: F0IdInput;
 }
 
-export class PoRepClientHistoryParameters extends IntersectionType(
+export class PoRepClientHistoryRequest extends IntersectionType(
   PickType(DashboardStatisticsRequest, ['period']),
   PoRepHistoryParameters,
 ) {}
