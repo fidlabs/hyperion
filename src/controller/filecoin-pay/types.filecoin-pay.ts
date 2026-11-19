@@ -1,5 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { PaginationInfoResponse } from '../base/types.controller-base';
+import { ApiProperty, IntersectionType } from '@nestjs/swagger';
+import {
+  DashboardServiceValue,
+  DashboardStatisticsResponsePeriod,
+  PaginationInfoResponse,
+} from '../base/types.controller-base';
 
 class ERC20TokenInfo {
   @ApiProperty({
@@ -162,3 +166,8 @@ export class GetFilecoinPayRailPaymentsResponse extends PaginationInfoResponse {
   })
   data: FilecoinPayPayment[];
 }
+
+export class GetTransactionsCountResponse extends IntersectionType(
+  DashboardServiceValue,
+  DashboardStatisticsResponsePeriod,
+) {}
