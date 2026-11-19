@@ -145,10 +145,10 @@ export class PoRepController extends ControllerBase {
 
   @Get('/providers/:providerId/compliance-stats')
   @ApiOperation({
-    summary: 'Get po-rep compliance statistics for given provider id.',
+    summary: 'Get PoRep compliance statistics for given provider id.',
   })
   @ApiOkResponse({
-    description: 'Po-rep provider compliance statistics',
+    description: 'PoRep provider compliance statistics',
     type: PoRepProviderComplianceStatistics,
   })
   @ApiBadRequestResponse({
@@ -166,7 +166,7 @@ export class PoRepController extends ControllerBase {
 
     if (!stats) {
       throw new NotFoundException(
-        `Po-rep provider with ID "${parameters.providerId}" does not exist.`,
+        `PoRep provider with ID "${parameters.providerId}" does not exist.`,
       );
     }
 
@@ -300,10 +300,10 @@ export class PoRepController extends ControllerBase {
 
   @Get('/providers/:providerId/storage-stats')
   @ApiOperation({
-    summary: 'Get po-rep storage statistics for given provider id.',
+    summary: 'Get PoRep storage statistics for given provider id.',
   })
   @ApiOkResponse({
-    description: 'Po-rep provider storage statistics',
+    description: 'PoRep provider storage statistics',
     type: PoRepProviderStorageStatistics,
   })
   @ApiBadRequestResponse({
@@ -321,7 +321,7 @@ export class PoRepController extends ControllerBase {
 
     if (!stats) {
       throw new NotFoundException(
-        `Po-rep provider with ID "${parameters.providerId}" does not exist.`,
+        `PoRep provider with ID "${parameters.providerId}" does not exist.`,
       );
     }
 
@@ -330,10 +330,10 @@ export class PoRepController extends ControllerBase {
 
   @Get('/providers/:providerId/economics-stats')
   @ApiOperation({
-    summary: 'Get po-rep economics statistics for given provider id.',
+    summary: 'Get PoRep economics statistics for given provider id.',
   })
   @ApiOkResponse({
-    description: 'Po-rep provider economics statistics',
+    description: 'PoRep provider economics statistics',
     type: PoRepProviderEconomicsStatistics,
   })
   @ApiBadRequestResponse({
@@ -351,7 +351,7 @@ export class PoRepController extends ControllerBase {
 
     if (!stats) {
       throw new NotFoundException(
-        `Po-rep provider with ID "${parameters.providerId}" does not exist.`,
+        `PoRep provider with ID "${parameters.providerId}" does not exist.`,
       );
     }
 
