@@ -1071,6 +1071,10 @@ export class PoRepService {
     );
   }
 
+  public isTestnet(): boolean {
+    return this.recentNodeClient.chain.id === filecoinCalibration.id;
+  }
+
   private async getOnboardedDeals(
     providerId: F0IdInput | null,
     dealId: string | null,
@@ -1422,10 +1426,6 @@ export class PoRepService {
               .div(totalDealsSize.toString())
               .toNumber(),
     };
-  }
-
-  private isTestnet(): boolean {
-    return this.recentNodeClient.chain.id === filecoinCalibration.id;
   }
 
   private epochToDate(epoch: bigint | number): Date {
