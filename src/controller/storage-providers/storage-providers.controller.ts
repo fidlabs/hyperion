@@ -21,6 +21,7 @@ import {
   DashboardService,
   DashboardServiceValue,
   DashboardStatisticsRequest,
+  DashboardStatisticsResponse,
 } from '../base/types.controller-base';
 import {
   StorageProvidersEarningsAgainstSla,
@@ -29,14 +30,13 @@ import {
   StorageProvidersHistoryRequest,
   StorageProvidersPeriodStatistics,
   StorageProvidersSlaHistoryEntry,
-  StorageProvidersStatistics,
 } from './types.storage-providers';
 
 @Controller('storage-providers')
 @CacheTTL(1000 * 60 * 30) // 30 minutes
 export class StorageProvidersController extends ControllerBase {
   constructor(
-    @Inject(CACHE_MANAGER) private _cacheManager: Cache,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly poRepService: PoRepService,
   ) {
     super();
@@ -48,7 +48,7 @@ export class StorageProvidersController extends ControllerBase {
       'Get storage providers statistics for a period, with values of the previous period for comparison',
   })
   @ApiOkResponse({
-    type: StorageProvidersStatistics,
+    type: DashboardStatisticsResponse<StorageProvidersPeriodStatistics>,
   })
   @ApiBadRequestResponse({
     description: 'Query parameters validation error',
@@ -58,7 +58,7 @@ export class StorageProvidersController extends ControllerBase {
   })
   public async getStatistics(
     @Query() { period = '30d', service = 'all' }: DashboardStatisticsRequest,
-  ): Promise<StorageProvidersStatistics> {
+  ): Promise<DashboardStatisticsResponse<StorageProvidersPeriodStatistics>> {
     this.validateServiceImplemented(service);
 
     const periods = this.getDashboardPeriods(period);

@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNumberString } from 'class-validator';
 import { IsIn, IsOptional } from 'class-validator';
+import { StorageProvidersPeriodStatistics } from 'src/controller/storage-providers/types.storage-providers';
 
 export class PaginationInfoRequest {
   @ApiPropertyOptional({
@@ -101,8 +102,7 @@ export class DashboardStatisticsRequest {
 
 export class DashboardServiceValue {
   @ApiProperty({
-    description: `Value for all requested services. Services that are not
-      implemented yet are not included.`,
+    description: `Value for all requested services. Services that are not implemented yet are not included.`,
     type: Number,
     nullable: true,
   })
@@ -122,4 +122,48 @@ export class DashboardServiceValue {
     nullable: true,
   })
   fwss: number | null;
+}
+
+export class DashboardStatisticsResponsePeriod {
+  @ApiProperty({
+    description: 'ISO Datetime of the period start, null for "all" period',
+    type: Date,
+    nullable: true,
+  })
+  periodStart: Date | null;
+
+  @ApiProperty({
+    description: 'ISO Datetime of the period end',
+  })
+  periodEnd: Date;
+}
+
+export class DashboardStatisticsResponse<
+  T extends DashboardStatisticsResponsePeriod,
+> {
+  @ApiProperty({
+    description: 'Period of the statistics',
+    enum: dashboardPeriods,
+    enumName: 'DashboardPeriod',
+  })
+  period: DashboardPeriod;
+
+  @ApiProperty({
+    description: 'Service of the statistics',
+    enum: dashboardServices,
+    enumName: 'DashboardService',
+  })
+  service: DashboardService;
+
+  @ApiProperty({
+    description: 'Statistics for the requested period',
+  })
+  current: T;
+
+  @ApiProperty({
+    description:
+      'Statistics for the previous period of the same length, null for "all" period',
+    nullable: true,
+  })
+  previous: T | null;
 }

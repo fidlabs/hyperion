@@ -1,12 +1,10 @@
 import { ApiProperty, IntersectionType, PickType } from '@nestjs/swagger';
 import { PoRepHistoryParameters } from 'src/service/po-rep/types.po-rep';
 import {
-  DashboardPeriod,
-  dashboardPeriods,
   DashboardService,
-  dashboardServices,
   DashboardServiceValue,
   DashboardStatisticsRequest,
+  DashboardStatisticsResponsePeriod,
 } from '../base/types.controller-base';
 
 export class StorageProvidersHistoryRequest extends IntersectionType(
@@ -72,17 +70,7 @@ export class StorageProviderEarningsAgainstSla {
   averageSla: number | null;
 }
 
-export class StorageProvidersEarningsAgainstSla {
-  @ApiProperty({
-    description: 'ISO Datetime of the period start',
-  })
-  periodStart: Date;
-
-  @ApiProperty({
-    description: 'ISO Datetime of the period end',
-  })
-  periodEnd: Date;
-
+export class StorageProvidersEarningsAgainstSla extends DashboardStatisticsResponsePeriod {
   @ApiProperty({
     description: `SLA target that providers SLA is compared against. Total is
       always null, as services SLA can not be combined.`,
@@ -134,19 +122,7 @@ export class StorageProvidersSlaHistoryEntry {
   providersBelowTargetPercentage: DashboardServiceValue;
 }
 
-export class StorageProvidersPeriodStatistics {
-  @ApiProperty({
-    description: 'ISO Datetime of the period start, null for "all" period',
-    type: Date,
-    nullable: true,
-  })
-  periodStart: Date | null;
-
-  @ApiProperty({
-    description: 'ISO Datetime of the period end',
-  })
-  periodEnd: Date;
-
+export class StorageProvidersPeriodStatistics extends DashboardStatisticsResponsePeriod {
   @ApiProperty({
     description:
       'Count of providers registered in SP Registry up to period end',
@@ -172,33 +148,4 @@ export class StorageProvidersPeriodStatistics {
       always null, as services SLA can not be combined.`,
   })
   averageSla: DashboardServiceValue;
-}
-
-export class StorageProvidersStatistics {
-  @ApiProperty({
-    description: 'Period of the statistics',
-    enum: dashboardPeriods,
-    enumName: 'DashboardPeriod',
-  })
-  period: DashboardPeriod;
-
-  @ApiProperty({
-    description: 'Service of the statistics',
-    enum: dashboardServices,
-    enumName: 'DashboardService',
-  })
-  service: DashboardService;
-
-  @ApiProperty({
-    description: 'Statistics for the requested period',
-  })
-  current: StorageProvidersPeriodStatistics;
-
-  @ApiProperty({
-    description:
-      'Statistics for the previous period of the same length, null for "all" period',
-    type: StorageProvidersPeriodStatistics,
-    nullable: true,
-  })
-  previous: StorageProvidersPeriodStatistics | null;
 }
