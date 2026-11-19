@@ -547,6 +547,14 @@ export interface PoRepReturningClientsHistoryEntry {
   extendedDealsClientsCount: number;
 }
 
+export interface PoRepClientsStatistics {
+  totalClientsCount: number;
+  averageDatasetsPerClient: number | null;
+  returningClientsCount: number;
+  fundedWalletsCount: number;
+  fundedWalletsPercentage: number | null;
+}
+
 export interface PoRepClientsRevenueConcentrationHistoryEntry {
   date: string;
   topClientsRevenueShare: number | null;

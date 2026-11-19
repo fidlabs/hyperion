@@ -10,6 +10,7 @@ import {
   createPoRepClientsHistoryQuery,
   createPoRepClientsListQuery,
   createPoRepClientSpendQuery,
+  createPoRepClientsStatisticsQuery,
   createPoRepClientStatisticsQuery,
   createPoRepReturningClientsHistoryQuery,
 } from 'src/db/queries/po-rep-clients.query';
@@ -26,6 +27,7 @@ import {
   createPoRepProvidersHistoryQuery,
 } from 'src/db/queries/po-rep-providers-statistics.query';
 import {
+  ARCHIVE_NODE_CLIENT,
   PoRepConfig,
   PoRepPublicClient,
   RECENT_NODE_CLIENT,
@@ -55,6 +57,7 @@ import {
   PoRepClientsHistoryEntry,
   PoRepClientsList,
   PoRepClientsRevenueConcentrationHistoryEntry,
+  PoRepClientsStatistics,
   PoRepClientWalletStatus,
   PoRepClientSlaHistoryEntry,
   PoRepComplianceState,
@@ -127,6 +130,8 @@ export class PoRepService {
     private readonly priceOracle: PoRepPriceOracleService,
     @Inject(RECENT_NODE_CLIENT)
     private readonly recentNodeClient: PoRepPublicClient,
+    @Inject(ARCHIVE_NODE_CLIENT)
+    private readonly archiveNodeClient: PoRepPublicClient,
     @InjectQueryBuilder() private readonly queryBuilder: QueryBuilder,
     private readonly urlFinderService: UrlFinderService,
     private readonly configService: ConfigService<PoRepConfig, true>,
@@ -390,6 +395,66 @@ export class PoRepService {
         lastSettlementAt: null,
       },
     );
+  }
+
+  public async getClientsStatistics(
+    periodStart: DateTime | null,
+    periodEnd: DateTime,
+  ): Promise<PoRepClientsStatistics> {
+    const periodEndEpoch = dateToFilecoinBlockHeight(periodEnd.toJSDate(), {
+      testnet: this.isTestnet(),
+    });
+    const isCurrentPeriod = periodEnd >= DateTime.utc().minus({ hours: 1 });
+
+    const [statistics, clients] = await Promise.all([
+      createPoRepClientsStatisticsQuery(this.queryBuilder, {
+        periodStartEpoch:
+          periodStart !== null
+            ? dateToFilecoinBlockHeight(periodStart.toJSDate(), {
+                testnet: this.isTestnet(),
+              })
+            : null,
+        periodEndEpoch: periodEndEpoch,
+      }).executeTakeFirstOrThrow(),
+      createPoRepClientsListQuery(this.queryBuilder, {
+        periodEndEpoch: periodEndEpoch,
+      }).execute(),
+    ]);
+
+    const clientsAccountsInfo = await this.getClientsAccountsInfo(
+      clients.map((client) => {
+        return {
+          clientAddress: client.client_address,
+          tokensAddresses: client.tokens_addresses ?? [],
+        };
+      }),
+      isCurrentPeriod ? null : BigInt(periodEndEpoch),
+    );
+    const totalClientsCount = stringToNumber(
+      statistics.clients_count.toString(),
+    );
+    const fundedWalletsCount = clientsAccountsInfo.filter(
+      (clientAccountsInfo) =>
+        clientAccountsInfo.some(([, currentFunds]) => currentFunds > 0n),
+    ).length;
+
+    return {
+      totalClientsCount: totalClientsCount,
+      averageDatasetsPerClient: safeDiv(
+        stringToNumber(statistics.datasets_count.toString()),
+        totalClientsCount,
+        null,
+      ),
+      returningClientsCount: stringToNumber(
+        statistics.returning_clients_count.toString(),
+      ),
+      fundedWalletsCount: fundedWalletsCount,
+      fundedWalletsPercentage: safeDiv(
+        fundedWalletsCount,
+        totalClientsCount,
+        null,
+      ),
+    };
   }
 
   public async getProvidersStatistics(
@@ -737,23 +802,34 @@ export class PoRepService {
     };
   }
 
-  private async getClientsWalletsStatuses(
+  private getClientsAccountsInfo(
     clients: { clientAddress: string; tokensAddresses: string[] }[],
-  ): Promise<PoRepClientWalletStatus[]> {
-    const clientsAccountsInfo = await Promise.all(
+    blockNumber: bigint | null = null,
+  ) {
+    const nodeClient =
+      blockNumber !== null ? this.archiveNodeClient : this.recentNodeClient;
+
+    return Promise.all(
       clients.map(({ clientAddress, tokensAddresses }) =>
         Promise.all(
           tokensAddresses.map((tokenAddress) =>
-            this.recentNodeClient.readContract({
+            nodeClient.readContract({
               address: this.configService.get('FILECOIN_PAY_CONTRACT_ADDRESS'),
               abi: FilecoinPayV1ABI,
               functionName: 'getAccountInfoIfSettled',
               args: [getAddress(tokenAddress), getAddress(clientAddress)],
+              blockNumber: blockNumber ?? undefined,
             }),
           ),
         ),
       ),
     );
+  }
+
+  private async getClientsWalletsStatuses(
+    clients: { clientAddress: string; tokensAddresses: string[] }[],
+  ): Promise<PoRepClientWalletStatus[]> {
+    const clientsAccountsInfo = await this.getClientsAccountsInfo(clients);
     const lowBalanceEpoch = BigInt(
       dateToFilecoinBlockHeight(
         DateTime.utc().plus({ days: walletLowBalanceDays }).toJSDate(),
