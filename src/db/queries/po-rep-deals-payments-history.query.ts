@@ -51,6 +51,7 @@ export function createPoRepDealsPaymentsHistoryQuery(
         windowSize,
       ).as('window_start'),
       'r.token as token_address',
+      'd.client as client_address',
       eb.fn
         .sum(netAmount ? 'p.netPayeeAmount' : 'p.totalAmount')
         .as('window_total'),
@@ -63,6 +64,6 @@ export function createPoRepDealsPaymentsHistoryQuery(
         mapF0IdLike,
       ),
     )
-    .groupBy(['window_start', 'token_address'])
+    .groupBy(['window_start', 'token_address', 'client_address'])
     .orderBy('window_start', 'asc');
 }
