@@ -12,7 +12,10 @@ import { DashboardStatisticsRequest } from '../base/types.controller-base';
 import {
   ClientsHistoryEntry,
   ClientsHistoryRequest,
+  ClientsList,
+  ClientsListRequest,
   ClientsReturningHistoryEntry,
+  ClientsRevenueConcentrationHistoryEntry,
 } from './types.clients';
 
 @Controller('clients')
@@ -23,6 +26,42 @@ export class ClientsController extends ControllerBase {
     private readonly poRepService: PoRepService,
   ) {
     super();
+  }
+
+  @Get()
+  @ApiOperation({
+    summary:
+      'Get list of clients (payer wallets) with datasets count and Filecoin Pay wallet status',
+  })
+  @ApiOkResponse({
+    type: ClientsList,
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  @ApiNotImplementedResponse({
+    description: 'List for FWSS is not implemented yet',
+  })
+  public async getClients(
+    @Query() { service = 'all', limit, page }: ClientsListRequest,
+  ): Promise<ClientsList> {
+    this.validateServiceImplemented(service);
+
+    const fcss = await this.poRepService.getClients({
+      limit: limit,
+      page: page,
+    });
+
+    return {
+      data: fcss.data.map((entry) => {
+        return {
+          clientAddress: entry.clientAddress,
+          datasetsCount: this.fcssOnly(entry.datasetsCount),
+          walletStatus: entry.walletStatus,
+        };
+      }),
+      pagination: fcss.pagination,
+    };
   }
 
   @Get('/history')
@@ -98,6 +137,43 @@ export class ClientsController extends ControllerBase {
         extendedDealsClientsCount: this.fcssOnly(
           entry.extendedDealsClientsCount,
         ),
+      };
+    });
+  }
+
+  @Get('/revenue-concentration-history')
+  @ApiOperation({
+    summary:
+      'Get history of share of revenue paid by the 10 largest clients, starting from the period start',
+  })
+  @ApiOkResponse({
+    type: [ClientsRevenueConcentrationHistoryEntry],
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  @ApiNotImplementedResponse({
+    description: 'History for FWSS is not implemented yet',
+  })
+  public async getRevenueConcentrationHistory(
+    @Query()
+    {
+      period = '30d',
+      service = 'all',
+      windowSize = 'month',
+    }: ClientsHistoryRequest,
+  ): Promise<ClientsRevenueConcentrationHistoryEntry[]> {
+    this.validateServiceImplemented(service);
+
+    const fcss = await this.poRepService.getClientsRevenueConcentrationHistory(
+      this.getDashboardPeriods(period).current.periodStart,
+      windowSize,
+    );
+
+    return fcss.map((entry) => {
+      return {
+        date: entry.date,
+        topClientsRevenueShare: this.fcssOnly(entry.topClientsRevenueShare),
       };
     });
   }
