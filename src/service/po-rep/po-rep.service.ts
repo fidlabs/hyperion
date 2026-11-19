@@ -45,31 +45,31 @@ import { UrlFinderDealMeasurement } from '../url-finder/types.url-finder';
 import { UrlFinderService } from '../url-finder/url-finder.service';
 import {
   DealRailState,
-  PoRepClient,
-  PoRepClientDealsHistoryEntry,
-  PoRepClientDealsSla,
-  PoRepClientSlaHistoryEntry,
+  GetPoRepClientResponse,
+  GetClientDealsHistoryResponse,
+  GetClientDealsSlaResponse,
+  GetClientSlaHistoryResponse,
   PoRepComplianceState,
   PoRepDeal,
-  PoRepDealsList,
-  PoRepDealsListParameters,
-  PoRepDealsPaymentsHistoryEntry,
-  PoRepDealsPaymentsHistoryParameters,
-  PoRepDealsValueHistoryEntry,
-  PoRepDealsValueHistoryParameters,
+  GetPoRepDealsResponse,
+  GetPoRepDealsRequest,
+  GetPaymentsHistoryResponse,
+  GetPaymentsHistoryRequest,
+  GetDealsValueHistoryResponse,
+  GetDealsValueHistoryRequest,
   PoRepHistoryParameters,
-  PoRepOnboardedDataHistoryEntry,
-  PoRepOnboardedDataHistoryParameters,
-  PoRepProviderComplianceStatistics,
-  PoRepProviderEconomicsStatistics,
+  GetOnboardedDataHistoryResponse,
+  GetOnboardedDataHistoryRequest,
+  GetProviderComplianceStatisticsResponse,
+  GetProviderEconomicsStatisticsResponse,
   PoRepProvidersEarningsAgainstSla,
   PoRepProvidersHistoryEntry,
   PoRepProvidersSlaHistory,
   PoRepProvidersStatistics,
-  PoRepProviderStorageStatistics,
-  PoRepSLIComplianceHistoryEntry,
-  PoRepSLIComplianceHistoryParameters,
-  PoRepSLIComplianceHistoryStateValues,
+  GetProviderStorageStatisticsResponse,
+  GetSLIComplianceHistoryResponse,
+  GetSLIComplianceHistoryRequest,
+  SLIComplianceHistoryResponseValue,
   PoRepSLIIndicator,
 } from './types.po-rep';
 import { ERC20TokenInfoService } from '../erc20-token-info/erc20-token-info.service';
@@ -130,7 +130,7 @@ export class PoRepService {
     order = 'asc',
     limit = 0,
     page = 1,
-  }: PoRepDealsListParameters): Promise<PoRepDealsList> {
+  }: GetPoRepDealsRequest): Promise<GetPoRepDealsResponse> {
     let baseQuery = createPoRepDealsQuery(this.queryBuilder, {
       providersIds: providerId,
       clientsAddresses:
@@ -266,7 +266,7 @@ export class PoRepService {
 
   public async getProviderStorageStatistics(
     providerId: F0Id | F0IdInput,
-  ): Promise<PoRepProviderStorageStatistics | null> {
+  ): Promise<GetProviderStorageStatisticsResponse | null> {
     const result = await createPoRepProviderStorageStatisticsQuery(
       this.queryBuilder,
       { providerId: providerId },
@@ -288,7 +288,7 @@ export class PoRepService {
 
   public async getProviderEconomicsStatistics(
     providerId: F0Id | F0IdInput,
-  ): Promise<PoRepProviderEconomicsStatistics> {
+  ): Promise<GetProviderEconomicsStatisticsResponse> {
     const perTokenResults = await createPoRepProviderEconomicsStatisticsQuery(
       this.queryBuilder,
       { providerId: providerId },
@@ -302,7 +302,7 @@ export class PoRepService {
       this.getTokensExchangeRatesUSD(uniqueTokens),
     ]);
 
-    return perTokenResults.reduce<PoRepProviderEconomicsStatistics>(
+    return perTokenResults.reduce<GetProviderEconomicsStatisticsResponse>(
       (stats, result) => {
         const resultRailsCount = stringToNumber(
           result.total_rails_count.toString(),
@@ -498,9 +498,7 @@ export class PoRepService {
     netAmounts = 'true',
     providerId = null,
     windowSize = 'day',
-  }: PoRepDealsPaymentsHistoryParameters): Promise<
-    PoRepDealsPaymentsHistoryEntry[]
-  > {
+  }: GetPaymentsHistoryRequest): Promise<GetPaymentsHistoryResponse[]> {
     const earliestDeal = await this.prismaService.po_rep_deal.findFirst({
       orderBy: {
         proposedAtBlock: 'asc',
@@ -548,58 +546,59 @@ export class PoRepService {
       (item) => DateTime.fromJSDate(item.window_start).toISODate(),
     );
 
-    return [...new Array(entriesCount)].reduce<
-      PoRepDealsPaymentsHistoryEntry[]
-    >((result, _, index) => {
-      const entryDate = startDate.plus({ [windowSize]: index });
-      const entryISODate = entryDate.toISODate();
-      const dataForWindow = dataByWindow[entryISODate] ?? [];
+    return [...new Array(entriesCount)].reduce<GetPaymentsHistoryResponse[]>(
+      (result, _, index) => {
+        const entryDate = startDate.plus({ [windowSize]: index });
+        const entryISODate = entryDate.toISODate();
+        const dataForWindow = dataByWindow[entryISODate] ?? [];
 
-      const windowVolumeUSD = dataForWindow.reduce(
-        (currentWindowVolumeUSD, result) => {
-          const tokenUSDExchangeRate = tokensUSDExchangeRates.get(
-            result.token_address,
-          );
-          const tokenInfo = tokensInfo.get(result.token_address);
-
-          // Should not happen but type safety
-          if (!tokenUSDExchangeRate || !tokenInfo) {
-            throw new Error(
-              `Exchange rate or info not found for token "${result.token_address}"`,
+        const windowVolumeUSD = dataForWindow.reduce(
+          (currentWindowVolumeUSD, result) => {
+            const tokenUSDExchangeRate = tokensUSDExchangeRates.get(
+              result.token_address,
             );
-          }
+            const tokenInfo = tokensInfo.get(result.token_address);
 
-          const tokenExponent = Math.pow(10, tokenInfo.tokenDecimals);
-          const tokenWindowTotalUSD = Decimal(result.window_total.toString())
-            .div(tokenExponent)
-            .mul(tokenUSDExchangeRate);
+            // Should not happen but type safety
+            if (!tokenUSDExchangeRate || !tokenInfo) {
+              throw new Error(
+                `Exchange rate or info not found for token "${result.token_address}"`,
+              );
+            }
 
-          return currentWindowVolumeUSD.add(tokenWindowTotalUSD);
-        },
-        Decimal(0),
-      );
+            const tokenExponent = Math.pow(10, tokenInfo.tokenDecimals);
+            const tokenWindowTotalUSD = Decimal(result.window_total.toString())
+              .div(tokenExponent)
+              .mul(tokenUSDExchangeRate);
 
-      const previousEntry = index === 0 ? undefined : result.at(index - 1);
-      const previousTotalUSD = previousEntry
-        ? Decimal(previousEntry.cumulativeTotalUSD)
-        : Decimal(0);
+            return currentWindowVolumeUSD.add(tokenWindowTotalUSD);
+          },
+          Decimal(0),
+        );
 
-      const nextEntry: PoRepDealsPaymentsHistoryEntry = {
-        date: entryISODate,
-        volumeUSD: windowVolumeUSD.toDecimalPlaces(2).toNumber(),
-        cumulativeTotalUSD: previousTotalUSD
-          .add(windowVolumeUSD)
-          .toDecimalPlaces(2)
-          .toNumber(),
-      };
+        const previousEntry = index === 0 ? undefined : result.at(index - 1);
+        const previousTotalUSD = previousEntry
+          ? Decimal(previousEntry.cumulativeTotalUSD)
+          : Decimal(0);
 
-      return [...result, nextEntry];
-    }, []);
+        const nextEntry: GetPaymentsHistoryResponse = {
+          date: entryISODate,
+          volumeUSD: windowVolumeUSD.toDecimalPlaces(2).toNumber(),
+          cumulativeTotalUSD: previousTotalUSD
+            .add(windowVolumeUSD)
+            .toDecimalPlaces(2)
+            .toNumber(),
+        };
+
+        return [...result, nextEntry];
+      },
+      [],
+    );
   }
 
   public async getProviderComplianceStatistics(
     providerId: F0IdInput,
-  ): Promise<PoRepProviderComplianceStatistics | null> {
+  ): Promise<GetProviderComplianceStatisticsResponse | null> {
     const provider =
       await this.prismaService.po_rep_storage_provider.findUnique({
         where: {
@@ -674,8 +673,8 @@ export class PoRepService {
     windowSize = 'day',
     providerId = null,
     dealId = null,
-  }: PoRepSLIComplianceHistoryParameters): Promise<
-    PoRepSLIComplianceHistoryEntry[]
+  }: GetSLIComplianceHistoryRequest): Promise<
+    GetSLIComplianceHistoryResponse[]
   > {
     const deals = await this.getOnboardedDeals(providerId, dealId);
     const history = await this.getDealsComplianceHistory(deals, windowSize);
@@ -741,7 +740,9 @@ export class PoRepService {
     };
   }
 
-  public async getClient(clientAddress: string): Promise<PoRepClient | null> {
+  public async getClient(
+    clientAddress: string,
+  ): Promise<GetPoRepClientResponse | null> {
     const address = getAddress(clientAddress);
     const to = DateTime.utc();
     const from = to.minus({ days: 30 });
@@ -798,7 +799,7 @@ export class PoRepService {
       .toDecimalPlaces(2)
       .toNumber();
 
-    return new PoRepClient({
+    return new GetPoRepClientResponse({
       clientAddress: statistics.client_address,
       servicesUsed: {
         fcss: true,
@@ -818,7 +819,7 @@ export class PoRepService {
     clientAddress: string,
     periodStart: DateTime | null,
     windowSize: PoRepHistoryParameters['windowSize'],
-  ): Promise<PoRepClientDealsHistoryEntry[] | null> {
+  ): Promise<GetClientDealsHistoryResponse[] | null> {
     const address = getAddress(clientAddress);
 
     if (!(await this.clientExists(address))) {
@@ -861,7 +862,7 @@ export class PoRepService {
     clientAddress: string,
     periodStart: DateTime | null,
     windowSize: PoRepHistoryParameters['windowSize'],
-  ): Promise<PoRepClientSlaHistoryEntry[] | null> {
+  ): Promise<GetClientSlaHistoryResponse[] | null> {
     const address = getAddress(clientAddress);
 
     if (!(await this.clientExists(address))) {
@@ -900,7 +901,7 @@ export class PoRepService {
 
   public async getClientDealsSla(
     clientAddress: string,
-  ): Promise<PoRepClientDealsSla | null> {
+  ): Promise<GetClientDealsSlaResponse | null> {
     const address = getAddress(clientAddress);
     const to = DateTime.utc();
     const from = to.minus({ days: 30 });
@@ -966,8 +967,8 @@ export class PoRepService {
   public async getOnboardedDataHistory({
     providerId,
     windowSize = 'day',
-  }: PoRepOnboardedDataHistoryParameters): Promise<
-    PoRepOnboardedDataHistoryEntry[]
+  }: GetOnboardedDataHistoryRequest): Promise<
+    GetOnboardedDataHistoryResponse[]
   > {
     const results = await createPoRepOnboardedDataHistoryQuery(
       this.queryBuilder,
@@ -994,7 +995,7 @@ export class PoRepService {
   public async getDealsValueHistory({
     providerId = null,
     windowSize = 'day',
-  }: PoRepDealsValueHistoryParameters): Promise<PoRepDealsValueHistoryEntry[]> {
+  }: GetDealsValueHistoryRequest): Promise<GetDealsValueHistoryResponse[]> {
     const data = await createPoRepDealsValueHistoryQuery(this.queryBuilder, {
       genesisTimestamp: getFilecoinGenesisTimestamp({
         testnet: this.isTestnet(),
@@ -1024,7 +1025,7 @@ export class PoRepService {
       (item) => DateTime.fromJSDate(item.window_start).toISODate(),
     );
 
-    return [...new Array(entriesCount)].reduce<PoRepDealsValueHistoryEntry[]>(
+    return [...new Array(entriesCount)].reduce<GetDealsValueHistoryResponse[]>(
       (result, _, index) => {
         const entryDate = startDate.plus({ [windowSize]: index });
         const entryISODate = entryDate.toISODate();
@@ -1059,7 +1060,7 @@ export class PoRepService {
           ? Decimal(previousEntry.cumulativeTotalUSD)
           : Decimal(0);
 
-        const nextEntry: PoRepDealsValueHistoryEntry = {
+        const nextEntry: GetDealsValueHistoryResponse = {
           date: entryISODate,
           volumeUSD: windowVolumeUSD.toDecimalPlaces(2).toNumber(),
           cumulativeTotalUSD: previousTotalUSD
@@ -1389,7 +1390,7 @@ export class PoRepService {
   private getComplianceStateValues(
     dealsCompliance: DealCompliance[],
     state: PoRepComplianceState,
-  ): PoRepSLIComplianceHistoryStateValues {
+  ): SLIComplianceHistoryResponseValue {
     const stateDealsCompliance = dealsCompliance.filter(
       (item) => item.state === state,
     );

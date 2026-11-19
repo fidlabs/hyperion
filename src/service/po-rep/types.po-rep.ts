@@ -112,7 +112,7 @@ const dealsAvailableSortingKeys = [
   'deal_created_at_epoch',
 ] as const;
 
-export class PoRepDealsListParameters extends PaginationParameters {
+export class GetPoRepDealsRequest extends PaginationParameters {
   @ApiPropertyOptional({
     description:
       'Optional filter by storage provider id, if provided then only deals of that provider will be returned',
@@ -402,7 +402,7 @@ export class PoRepDeal {
   }
 }
 
-export class PoRepDealsList {
+export class GetPoRepDealsResponse {
   @ApiProperty({
     description:
       'Paginated and sorted list of deals matching provided parameters.',
@@ -418,7 +418,7 @@ export class PoRepDealsList {
 }
 
 // Onboarded data history
-export class PoRepOnboardedDataHistoryEntry {
+export class GetOnboardedDataHistoryResponse {
   @ApiProperty({
     description: 'Entry date',
   })
@@ -437,7 +437,7 @@ export class PoRepOnboardedDataHistoryEntry {
 }
 
 // Deals value history
-export class PoRepDealsValueHistoryEntry {
+export class GetDealsValueHistoryResponse {
   @ApiProperty({
     description: 'Window start ISO date (UTC)',
   })
@@ -456,7 +456,7 @@ export class PoRepDealsValueHistoryEntry {
 }
 
 // Deals payments history
-export class PoRepDealsPaymentsHistoryEntry {
+export class GetPaymentsHistoryResponse {
   @ApiProperty({
     description: 'Window start ISO date (UTC)',
   })
@@ -474,7 +474,7 @@ export class PoRepDealsPaymentsHistoryEntry {
   cumulativeTotalUSD: number;
 }
 
-export class PoRepOnboardedDataHistoryParameters extends PoRepHistoryParameters {
+export class GetOnboardedDataHistoryRequest extends PoRepHistoryParameters {
   @ApiPropertyOptional({
     description: `Optional filter by provider id`,
     required: false,
@@ -485,7 +485,7 @@ export class PoRepOnboardedDataHistoryParameters extends PoRepHistoryParameters 
   providerId?: F0IdInput;
 }
 
-export class PoRepProviderStorageStatistics {
+export class GetProviderStorageStatisticsResponse {
   @ApiProperty({
     description: 'Total count of deals made with provider',
   })
@@ -554,7 +554,7 @@ export interface PoRepProvidersSlaHistory {
   data: PoRepProvidersSlaHistoryEntry[];
 }
 
-export class PoRepProviderEconomicsStatistics {
+export class GetProviderEconomicsStatisticsResponse {
   @ApiProperty({
     description:
       'Total count of payment rails created for deals with provider.',
@@ -590,7 +590,7 @@ export class PoRepProviderEconomicsStatistics {
   lastSettlementAt: Date | null;
 }
 
-export class PoRepDealsPaymentsHistoryParameters extends PoRepHistoryParameters {
+export class GetPaymentsHistoryRequest extends PoRepHistoryParameters {
   @ApiPropertyOptional({
     description: `Sum net amounts received by providers instead of total 
       settlement amounts including commision and network fees. Default is 
@@ -612,7 +612,7 @@ export class PoRepDealsPaymentsHistoryParameters extends PoRepHistoryParameters 
   providerId?: F0IdInput;
 }
 
-export class PoRepDealsValueHistoryParameters extends PoRepHistoryParameters {
+export class GetDealsValueHistoryRequest extends PoRepHistoryParameters {
   @ApiPropertyOptional({
     description: `Optional filter by provider id`,
     required: false,
@@ -627,7 +627,7 @@ export class PoRepDealsValueHistoryParameters extends PoRepHistoryParameters {
 export type PoRepComplianceState = 'compliant' | 'nonCompliant' | 'unknown';
 export type PoRepSLIIndicator = 'retrievability' | 'latency' | 'bandwidth';
 
-export class PoRepSLIComplianceHistoryParameters extends PoRepHistoryParameters {
+export class GetSLIComplianceHistoryRequest extends PoRepHistoryParameters {
   @ApiPropertyOptional({
     description: 'Provider ID to filter by, no filter by default',
     required: false,
@@ -648,7 +648,7 @@ export class PoRepSLIComplianceHistoryParameters extends PoRepHistoryParameters 
   dealId?: string;
 }
 
-export class PoRepSLIComplianceHistoryStateValues {
+export class SLIComplianceHistoryResponseValue {
   @ApiProperty({
     description:
       'Number of providers having at least one deal matching given state',
@@ -682,7 +682,7 @@ export class PoRepSLIComplianceHistoryStateValues {
   totalDealsSizePercentage: number;
 }
 
-export class PoRepSLIComplianceHistoryEntry {
+export class GetSLIComplianceHistoryResponse {
   @ApiProperty({
     description: 'Window start ISO date (UTC)',
   })
@@ -715,24 +715,24 @@ export class PoRepSLIComplianceHistoryEntry {
       were measured in given window and all SLIs required by the deal were met
       in every measurement.`,
   })
-  compliant: PoRepSLIComplianceHistoryStateValues;
+  compliant: SLIComplianceHistoryResponseValue;
 
   @ApiProperty({
     description: `Values for non-compliant deals. Non-compliant deals are
       those for which any of the SLIs required by the deal was not met in any
       measurement in given window.`,
   })
-  nonCompliant: PoRepSLIComplianceHistoryStateValues;
+  nonCompliant: SLIComplianceHistoryResponseValue;
 
   @ApiProperty({
     description: `Values for unknown state deals. Unknown deals are those for
       which none of the measurements in given window measured all SLIs
       required by the deal.`,
   })
-  unknown: PoRepSLIComplianceHistoryStateValues;
+  unknown: SLIComplianceHistoryResponseValue;
 }
 
-export class PoRepNonCompliantDealsCountByIndicator {
+export class ProviderComplianceStatisticsIndicator {
   @ApiProperty({
     description: `Count of non-compliant deals for which required
       retrievability was not met in any measurement`,
@@ -759,7 +759,7 @@ export class PoRepNonCompliantDealsCountByIndicator {
   indexing: number | null;
 }
 
-export class PoRepProviderComplianceStatistics {
+export class GetProviderComplianceStatisticsResponse {
   @ApiProperty({
     description: 'Total count of deals made with provider',
   })
@@ -803,7 +803,7 @@ export class PoRepProviderComplianceStatistics {
       last 30 days, by SLI that was not met. A deal can be counted for more
       than one SLI.`,
   })
-  nonCompliantDealsCountByIndicator: PoRepNonCompliantDealsCountByIndicator;
+  nonCompliantDealsCountByIndicator: ProviderComplianceStatisticsIndicator;
 
   @ApiProperty({
     description: `Average SLA of active provider deals in the last 30 days, eg.
@@ -829,7 +829,7 @@ export class PoRepProviderComplianceStatistics {
 }
 
 // Clients
-export class PoRepClientParameters {
+export class GetPoRepClientRequest {
   @ApiProperty({
     description: 'Client (payer wallet) EVM address, case insensitive',
     type: 'string',
@@ -838,7 +838,7 @@ export class PoRepClientParameters {
   clientAddress: string;
 }
 
-export class PoRepClientDealsHistoryEntry {
+export class GetClientDealsHistoryResponse {
   @ApiProperty({
     description: 'Window start ISO date (UTC)',
   })
@@ -871,7 +871,7 @@ export class PoRepClientServicesUsed {
   fwss: boolean | null;
 }
 
-export class PoRepClient {
+export class GetPoRepClientResponse {
   @ApiProperty({
     description: `EVM address of the client. Client is a single payer wallet,
       in PoRep market payment rails are always created with deal client as
@@ -916,12 +916,12 @@ export class PoRepClient {
   })
   spendLast30DaysUSD: number;
 
-  constructor(client: PoRepClient) {
+  constructor(client: GetPoRepClientResponse) {
     Object.assign(this, client);
   }
 }
 
-export class PoRepClientSlaHistoryEntry {
+export class GetClientSlaHistoryResponse {
   @ApiProperty({
     description: 'Window start ISO date (UTC)',
   })
@@ -957,7 +957,7 @@ export class PoRepClientSlaHistoryEntry {
   dealsBelowTargetPercentage: number | null;
 }
 
-export class PoRepClientDealSla {
+export class ClientDealsSlaDeal {
   @ApiProperty({
     description: 'Deal ID',
   })
@@ -985,7 +985,7 @@ export class PoRepClientDealSla {
   averageSla: number | null;
 }
 
-export class PoRepClientDealsSla {
+export class GetClientDealsSlaResponse {
   @ApiProperty({
     description: 'SLA target that client deals SLA is compared against',
   })
@@ -993,8 +993,8 @@ export class PoRepClientDealsSla {
 
   @ApiProperty({
     description: 'All client deals, latest first',
-    type: PoRepClientDealSla,
+    type: ClientDealsSlaDeal,
     isArray: true,
   })
-  deals: PoRepClientDealSla[];
+  deals: ClientDealsSlaDeal[];
 }

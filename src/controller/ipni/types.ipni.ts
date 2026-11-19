@@ -31,7 +31,7 @@ export class AggregatedProvidersIPNIReportingStatusWeek {
   total: number;
 }
 
-export class AggregatedProvidersIPNIReportingStatusWeekly {
+export class GetAggregatedIPNIStatusWeeklyResponse {
   @ApiProperty({
     description: 'IPNI Reporting data week over week',
     isArray: true,

@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { IsNumberString } from 'class-validator';
 import { IsIn, IsOptional } from 'class-validator';
-import { StorageProvidersPeriodStatistics } from 'src/controller/storage-providers/types.storage-providers';
 
 export class PaginationInfoRequest {
   @ApiPropertyOptional({
