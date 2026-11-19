@@ -7,15 +7,20 @@ import {
   ApiOperation,
 } from '@nestjs/swagger';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
-import { ControllerBase } from '../base/controller-base';
+import {
+  ControllerBase,
+  DashboardPeriodBoundaries,
+} from '../base/controller-base';
 import { DashboardStatisticsRequest } from '../base/types.controller-base';
 import {
   ClientsHistoryEntry,
   ClientsHistoryRequest,
   ClientsList,
   ClientsListRequest,
+  ClientsPeriodStatistics,
   ClientsReturningHistoryEntry,
   ClientsRevenueConcentrationHistoryEntry,
+  ClientsStatistics,
 } from './types.clients';
 
 @Controller('clients')
@@ -61,6 +66,41 @@ export class ClientsController extends ControllerBase {
         };
       }),
       pagination: fcss.pagination,
+    };
+  }
+
+  @Get('/statistics')
+  @ApiOperation({
+    summary:
+      'Get clients statistics for a period, with values of the previous period for comparison',
+  })
+  @ApiOkResponse({
+    type: ClientsStatistics,
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  @ApiNotImplementedResponse({
+    description: 'Statistics for FWSS are not implemented yet',
+  })
+  public async getStatistics(
+    @Query() { period = '30d', service = 'all' }: DashboardStatisticsRequest,
+  ): Promise<ClientsStatistics> {
+    this.validateServiceImplemented(service);
+
+    const periods = this.getDashboardPeriods(period);
+    const [current, previous] = await Promise.all([
+      this.getPeriodStatistics(periods.current),
+      periods.previous !== null
+        ? this.getPeriodStatistics(periods.previous)
+        : null,
+    ]);
+
+    return {
+      period: period,
+      service: service,
+      current: current,
+      previous: previous,
     };
   }
 
@@ -176,5 +216,25 @@ export class ClientsController extends ControllerBase {
         topClientsRevenueShare: this.fcssOnly(entry.topClientsRevenueShare),
       };
     });
+  }
+
+  private async getPeriodStatistics({
+    periodStart,
+    periodEnd,
+  }: DashboardPeriodBoundaries): Promise<ClientsPeriodStatistics> {
+    const fcss = await this.poRepService.getClientsStatistics(
+      periodStart,
+      periodEnd,
+    );
+
+    return {
+      periodStart: periodStart !== null ? periodStart.toJSDate() : null,
+      periodEnd: periodEnd.toJSDate(),
+      totalClientsCount: this.fcssOnly(fcss.totalClientsCount),
+      averageDatasetsPerClient: this.fcssOnly(fcss.averageDatasetsPerClient),
+      returningClientsCount: this.fcssOnly(fcss.returningClientsCount),
+      fundedWalletsCount: this.fcssOnly(fcss.fundedWalletsCount),
+      fundedWalletsPercentage: this.fcssOnly(fcss.fundedWalletsPercentage),
+    };
   }
 }
