@@ -8,6 +8,7 @@ import { PrismaService } from 'src/db/prisma.service';
 import {
   createPoRepClientDealsHistoryQuery,
   createPoRepClientsHistoryQuery,
+  createPoRepClientsListQuery,
   createPoRepClientSpendQuery,
   createPoRepClientStatisticsQuery,
   createPoRepReturningClientsHistoryQuery,
@@ -47,10 +48,14 @@ import { UrlFinderDealMeasurement } from '../url-finder/types.url-finder';
 import { UrlFinderService } from '../url-finder/url-finder.service';
 import {
   DealRailState,
+  PaginationParameters,
   PoRepClient,
   PoRepClientDealsHistoryEntry,
   PoRepClientDealsSla,
   PoRepClientsHistoryEntry,
+  PoRepClientsList,
+  PoRepClientsRevenueConcentrationHistoryEntry,
+  PoRepClientWalletStatus,
   PoRepClientSlaHistoryEntry,
   PoRepComplianceState,
   PoRepDeal,
@@ -77,6 +82,7 @@ import {
   PoRepSLIIndicator,
 } from './types.po-rep';
 import { ERC20TokenInfoService } from '../erc20-token-info/erc20-token-info.service';
+import FilecoinPayV1ABI from 'src/po-rep-indexer/abis/filecoin-pay-v1-abi';
 
 interface TokenDetails {
   tokenAddress: string;
@@ -110,6 +116,8 @@ interface DealsComplianceWindow {
 }
 
 const Decimal = PrismaRuntime.Decimal;
+const topClientsCount = 10;
+const walletLowBalanceDays = 30;
 
 @Injectable()
 export class PoRepService {
@@ -575,6 +583,210 @@ export class PoRepService {
       .filter(
         (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
       );
+  }
+
+  public async getClientsRevenueConcentrationHistory(
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Promise<PoRepClientsRevenueConcentrationHistoryEntry[]> {
+    const [earliestDeal, data] = await Promise.all([
+      this.prismaService.po_rep_deal.findFirst({
+        orderBy: {
+          proposedAtBlock: 'asc',
+        },
+      }),
+      createPoRepDealsPaymentsHistoryQuery(this.queryBuilder, {
+        genesisTimestamp: getFilecoinGenesisTimestamp({
+          testnet: this.isTestnet(),
+        }),
+        netAmount: false,
+        windowSize: windowSize,
+      }).execute(),
+    ]);
+
+    if (!earliestDeal) {
+      return [];
+    }
+
+    const startDate = DateTime.fromJSDate(
+      // eslint-disable-next-line no-restricted-syntax
+      filecoinBlockHeightToDate(Number(earliestDeal.proposedAtBlock), {
+        testnet: this.isTestnet(),
+      }),
+    )
+      .toUTC()
+      .startOf(windowSize);
+    const endDate = DateTime.utc().startOf(windowSize);
+    const entriesCount =
+      endDate.diff(startDate, windowSize)[`${windowSize}s`] + 1;
+    const firstWindowDate =
+      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+
+    const uniqueTokens = uniq(data.map((item) => item.token_address));
+    const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
+      this.getTokensDetails(uniqueTokens),
+      this.getTokensExchangeRatesUSD(uniqueTokens),
+    ]);
+
+    const dataByWindow = groupBy(
+      data.filter((item) => item.window_start !== null),
+      (item) => DateTime.fromJSDate(item.window_start).toISODate(),
+    );
+    const clientsRevenueUSD = new Map<string, PrismaRuntime.Decimal>();
+
+    return [...new Array(entriesCount)]
+      .map((_, index) => {
+        const entryISODate = startDate
+          .plus({ [windowSize]: index })
+          .toISODate();
+
+        (dataByWindow[entryISODate] ?? []).forEach((item) => {
+          const tokenDetails = tokensDetails.get(item.token_address);
+          const tokenExchangeRateUSD = tokensExchangeRatesUSD.get(
+            item.token_address,
+          );
+
+          if (!tokenDetails || !tokenExchangeRateUSD) {
+            throw new Error(
+              `Exchange rate or info not found for token "${item.token_address}"`,
+            );
+          }
+
+          const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
+
+          clientsRevenueUSD.set(
+            item.client_address,
+            (clientsRevenueUSD.get(item.client_address) ?? Decimal(0)).add(
+              Decimal(item.window_total.toString())
+                .div(tokenExponent.toString())
+                .mul(tokenExchangeRateUSD),
+            ),
+          );
+        });
+
+        const revenuesUSD = [...clientsRevenueUSD.values()].sort((a, b) =>
+          b.comparedTo(a),
+        );
+        const totalRevenueUSD = revenuesUSD.reduce(
+          (totalUSD, revenueUSD) => totalUSD.add(revenueUSD),
+          Decimal(0),
+        );
+        const topClientsRevenueUSD = revenuesUSD
+          .slice(0, topClientsCount)
+          .reduce(
+            (totalUSD, revenueUSD) => totalUSD.add(revenueUSD),
+            Decimal(0),
+          );
+
+        return {
+          date: entryISODate,
+          topClientsRevenueShare: totalRevenueUSD.isZero()
+            ? null
+            : topClientsRevenueUSD.div(totalRevenueUSD).toNumber(),
+        };
+      })
+      .filter(
+        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+      );
+  }
+
+  public async getClients({
+    limit = 0,
+    page = 1,
+  }: PaginationParameters): Promise<PoRepClientsList> {
+    const baseQuery = createPoRepClientsListQuery(this.queryBuilder);
+    let resultsQuery = baseQuery
+      .orderBy('datasets_count', 'desc')
+      .orderBy('client_address', 'asc');
+
+    if (limit) {
+      resultsQuery = resultsQuery.limit(limit).offset((page - 1) * limit);
+    }
+
+    const [results, countResult] = await Promise.all([
+      resultsQuery.execute(),
+      this.queryBuilder
+        .selectFrom('po_rep_deal')
+        .select((eb) => [eb.fn.count('client').distinct().as('count')])
+        .executeTakeFirstOrThrow(),
+    ]);
+
+    const totalCount = stringToNumber(countResult.count.toString()) ?? 0;
+    const walletsStatuses = await this.getClientsWalletsStatuses(
+      results.map((result) => {
+        return {
+          clientAddress: result.client_address,
+          tokensAddresses: result.tokens_addresses ?? [],
+        };
+      }),
+    );
+
+    return {
+      data: results.map((result, index) => {
+        return {
+          clientAddress: result.client_address,
+          datasetsCount: stringToNumber(result.datasets_count.toString()),
+          walletStatus: walletsStatuses[index],
+        };
+      }),
+      pagination: {
+        page: page,
+        pagesCount: limit ? Math.ceil(totalCount / limit) : 1,
+        totalCount: totalCount,
+      },
+    };
+  }
+
+  private async getClientsWalletsStatuses(
+    clients: { clientAddress: string; tokensAddresses: string[] }[],
+  ): Promise<PoRepClientWalletStatus[]> {
+    const clientsAccountsInfo = await Promise.all(
+      clients.map(({ clientAddress, tokensAddresses }) =>
+        Promise.all(
+          tokensAddresses.map((tokenAddress) =>
+            this.recentNodeClient.readContract({
+              address: this.configService.get('FILECOIN_PAY_CONTRACT_ADDRESS'),
+              abi: FilecoinPayV1ABI,
+              functionName: 'getAccountInfoIfSettled',
+              args: [getAddress(tokenAddress), getAddress(clientAddress)],
+            }),
+          ),
+        ),
+      ),
+    );
+    const lowBalanceEpoch = BigInt(
+      dateToFilecoinBlockHeight(
+        DateTime.utc().plus({ days: walletLowBalanceDays }).toJSDate(),
+        { testnet: this.isTestnet() },
+      ),
+    );
+
+    return clientsAccountsInfo.map((clientAccountsInfo) => {
+      const setUpAccountsInfo = clientAccountsInfo.filter(
+        ([, currentFunds, , currentLockupRate]) =>
+          currentFunds > 0n || currentLockupRate > 0n,
+      );
+
+      if (setUpAccountsInfo.length === 0) {
+        return 'not_set_up';
+      }
+
+      if (
+        setUpAccountsInfo.some(([, , availableFunds]) => availableFunds === 0n)
+      ) {
+        return 'empty';
+      }
+
+      if (
+        setUpAccountsInfo.some(
+          ([fundedUntilEpoch]) => fundedUntilEpoch < lowBalanceEpoch,
+        )
+      ) {
+        return 'low_balance';
+      }
+
+      return 'funded';
+    });
   }
 
   public async getDealsPaymentsSummaryHistory({

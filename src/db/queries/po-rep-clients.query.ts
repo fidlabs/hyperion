@@ -344,3 +344,19 @@ export function createPoRepReturningClientsHistoryQuery(
     ])
     .orderBy('wd.window_start');
 }
+
+export function createPoRepClientsListQuery(qb: QueryBuilder) {
+  return qb
+    .selectFrom('po_rep_deal as d')
+    .leftJoin('filecoin_pay_rail as r', 'r.railId', 'd.railId')
+    .select((eb) => [
+      'd.client as client_address',
+      eb.fn.count('d.manifestHash').distinct().as('datasets_count'),
+      eb.fn
+        .agg<string[] | null>('array_agg', ['r.token'])
+        .distinct()
+        .filterWhere('r.token', 'is not', null)
+        .as('tokens_addresses'),
+    ])
+    .groupBy('d.client');
+}
