@@ -18,7 +18,7 @@ class ERC20TokenInfo {
   decimals: number;
 }
 
-export class FilecoinPayRail {
+export class GetFilecoinPayRailResponse {
   @ApiProperty({
     description: 'ID of the payment rail',
   })
@@ -148,10 +148,10 @@ export class FilecoinPayPayment {
 export class GetFilecoinPayRailsResponse extends PaginationInfoResponse {
   @ApiProperty({
     description: 'List of FilecoinPay payment rails',
-    type: FilecoinPayRail,
+    type: GetFilecoinPayRailResponse,
     isArray: true,
   })
-  data: FilecoinPayRail[];
+  data: GetFilecoinPayRailResponse[];
 }
 
 export class GetFilecoinPayRailPaymentsResponse extends PaginationInfoResponse {
