@@ -102,7 +102,7 @@ export class StorageProvidersController extends ControllerBase {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getProvidersHistory(
-      this.getDashboardPeriods(period).current.periodStart,
+      this.getDashboardPeriods(period).current.start,
       windowSize,
     );
 
@@ -141,7 +141,7 @@ export class StorageProvidersController extends ControllerBase {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getProvidersSlaHistory(
-      this.getDashboardPeriods(period).current.periodStart,
+      this.getDashboardPeriods(period).current.start,
       windowSize,
     );
 
@@ -179,15 +179,15 @@ export class StorageProvidersController extends ControllerBase {
   ): Promise<StorageProvidersEarningsAgainstSla> {
     this.validateServiceImplemented(service);
 
-    const { periodStart, periodEnd } = this.getDashboardPeriods('30d').current;
+    const { start, end } = this.getDashboardPeriods('30d').current;
     const fcss = await this.poRepService.getProvidersEarningsAgainstSla(
-      periodStart,
-      periodEnd,
+      start,
+      end,
     );
 
     return {
-      periodStart: periodStart.toJSDate(),
-      periodEnd: periodEnd.toJSDate(),
+      periodStart: start.toJSDate(),
+      periodEnd: end.toJSDate(),
       slaTarget: this.fcssOnlyWithoutTotal(fcss.slaTarget),
       providers: fcss.providers.map((provider) => {
         return {
@@ -199,17 +199,17 @@ export class StorageProvidersController extends ControllerBase {
   }
 
   private async getPeriodStatistics({
-    periodStart,
-    periodEnd,
+    start,
+    end,
   }: DashboardPeriodBoundaries): Promise<StorageProvidersPeriodStatistics> {
     const fcss = await this.poRepService.getProvidersStatistics(
-      periodStart,
-      periodEnd,
+      start,
+      end,
     );
 
     return {
-      periodStart: periodStart !== null ? periodStart.toJSDate() : null,
-      periodEnd: periodEnd.toJSDate(),
+      periodStart: start !== null ? start.toJSDate() : null,
+      periodEnd: end.toJSDate(),
       totalProvidersCount: this.fcssOnly(fcss.totalProvidersCount),
       activeProvidersCount: this.fcssOnly(fcss.activeProvidersCount),
       earningsUSD: this.fcssOnly(fcss.earningsUSD),
