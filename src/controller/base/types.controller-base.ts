@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { IsNumberString } from 'class-validator';
 import { IsIn, IsOptional } from 'class-validator';
 
@@ -123,3 +123,8 @@ export class DashboardServiceValue {
   })
   fwss: number | null;
 }
+
+export class DashboardServiceSplitValue extends OmitType(
+  DashboardServiceValue,
+  ['total'],
+) {}

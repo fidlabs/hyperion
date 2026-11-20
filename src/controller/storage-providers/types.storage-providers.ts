@@ -5,6 +5,7 @@ import {
   dashboardPeriods,
   DashboardService,
   dashboardServices,
+  DashboardServiceSplitValue,
   DashboardServiceValue,
   DashboardStatisticsRequest,
 } from '../base/types.controller-base';
@@ -84,10 +85,10 @@ export class StorageProvidersEarningsAgainstSla {
   periodEnd: Date;
 
   @ApiProperty({
-    description: `SLA target that providers SLA is compared against. Total is
-      always null, as services SLA can not be combined.`,
+    description: `SLA target that providers SLA is compared against, separate
+      for each service`,
   })
-  slaTarget: DashboardServiceValue;
+  slaTarget: DashboardServiceSplitValue;
 
   @ApiProperty({
     description: `Providers with earnings or deals active in the period, one
@@ -107,31 +108,37 @@ export class StorageProvidersSlaHistoryEntry {
   @ApiProperty({
     description: `Average SLA of deals active in the window, eg. average share
       of URL Finder measurements in which all SLIs required by the deal were
-      met. Null when none of the deals was measured in the window. Total is
-      always null, as services SLA can not be combined.`,
+      met. Null when none of the deals was measured in the window.`,
   })
   averageSla: DashboardServiceValue;
 
   @ApiProperty({
-    description: `SLA target that providers SLA is compared against. Total is
-      always null, as services SLA can not be combined.`,
+    description: `Count of providers with SLA below the service SLA target in
+      the window. Provider SLA is the average SLA of its deals active in the
+      window. Providers without measurements in the window are not included.`,
   })
-  slaTarget: DashboardServiceValue;
-
-  @ApiProperty({
-    description: `Count of providers with SLA below the target in the window.
-      Provider SLA is the average SLA of its deals active in the window.
-      Providers without measurements in the window are not included. Total is
-      always null, as services SLA can not be combined.`,
-  })
-  providersBelowTargetCount: DashboardServiceValue;
+  providersBelowTargetCount: DashboardServiceSplitValue;
 
   @ApiProperty({
     description: `Percentage of providers measured in the window with SLA below
-      the target. Null when none of the providers was measured in the window.
-      Total is always null, as services SLA can not be combined.`,
+      the service SLA target. 0 when none of the providers was measured in the
+      window.`,
   })
-  providersBelowTargetPercentage: DashboardServiceValue;
+  providersBelowTargetPercentage: DashboardServiceSplitValue;
+}
+
+export class StorageProvidersSlaHistory {
+  @ApiProperty({
+    description: `SLA target that providers SLA is compared against, separate
+      for each service`,
+  })
+  slaTarget: DashboardServiceSplitValue;
+
+  @ApiProperty({
+    description: 'SLA history entries, one per window',
+    type: [StorageProvidersSlaHistoryEntry],
+  })
+  data: StorageProvidersSlaHistoryEntry[];
 }
 
 export class StorageProvidersPeriodStatistics {
@@ -168,8 +175,7 @@ export class StorageProvidersPeriodStatistics {
   @ApiProperty({
     description: `Average SLA of deals active in the period, eg. average share
       of URL Finder measurements in which all SLIs required by the deal were
-      met. Null when none of the deals was measured in the period. Total is
-      always null, as services SLA can not be combined.`,
+      met. Null when none of the deals was measured in the period.`,
   })
   averageSla: DashboardServiceValue;
 }
