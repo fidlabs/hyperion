@@ -19,6 +19,7 @@ import {
 } from '../base/controller-base';
 import {
   DashboardService,
+  DashboardServiceSplitValue,
   DashboardServiceValue,
   DashboardStatisticsRequest,
 } from '../base/types.controller-base';
@@ -28,7 +29,7 @@ import {
   StorageProvidersHistoryEntry,
   StorageProvidersHistoryRequest,
   StorageProvidersPeriodStatistics,
-  StorageProvidersSlaHistoryEntry,
+  StorageProvidersSlaHistory,
   StorageProvidersStatistics,
 } from './types.storage-providers';
 
@@ -122,7 +123,7 @@ export class StorageProvidersController extends ControllerBase {
       'Get history of average SLA and share of providers below the SLA target, starting from the period start',
   })
   @ApiOkResponse({
-    type: [StorageProvidersSlaHistoryEntry],
+    type: StorageProvidersSlaHistory,
   })
   @ApiBadRequestResponse({
     description: 'Query parameters validation error',
@@ -137,7 +138,7 @@ export class StorageProvidersController extends ControllerBase {
       service = 'all',
       windowSize = 'day',
     }: StorageProvidersHistoryRequest,
-  ): Promise<StorageProvidersSlaHistoryEntry[]> {
+  ): Promise<StorageProvidersSlaHistory> {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getProvidersSlaHistory(
@@ -145,19 +146,21 @@ export class StorageProvidersController extends ControllerBase {
       windowSize,
     );
 
-    return fcss.map((entry) => {
-      return {
-        date: entry.date,
-        averageSla: this.fcssOnlyWithoutTotal(entry.averageSla),
-        slaTarget: this.fcssOnlyWithoutTotal(entry.slaTarget),
-        providersBelowTargetCount: this.fcssOnlyWithoutTotal(
-          entry.providersBelowTargetCount,
-        ),
-        providersBelowTargetPercentage: this.fcssOnlyWithoutTotal(
-          entry.providersBelowTargetPercentage,
-        ),
-      };
-    });
+    return {
+      slaTarget: this.fcssOnlyWithoutTotal(fcss.slaTarget),
+      data: fcss.data.map((entry) => {
+        return {
+          date: entry.date,
+          averageSla: this.fcssOnly(entry.averageSla),
+          providersBelowTargetCount: this.fcssOnlyWithoutTotal(
+            entry.providersBelowTargetCount,
+          ),
+          providersBelowTargetPercentage: this.fcssOnlyWithoutTotal(
+            entry.providersBelowTargetPercentage,
+          ),
+        };
+      }),
+    };
   }
 
   @Get('/earnings-against-sla')
@@ -213,7 +216,7 @@ export class StorageProvidersController extends ControllerBase {
       totalProvidersCount: this.fcssOnly(fcss.totalProvidersCount),
       activeProvidersCount: this.fcssOnly(fcss.activeProvidersCount),
       earningsUSD: this.fcssOnly(fcss.earningsUSD),
-      averageSla: this.fcssOnlyWithoutTotal(fcss.averageSla),
+      averageSla: this.fcssOnly(fcss.averageSla),
     };
   }
 
@@ -233,9 +236,10 @@ export class StorageProvidersController extends ControllerBase {
     };
   }
 
-  private fcssOnlyWithoutTotal(value: number | null): DashboardServiceValue {
+  private fcssOnlyWithoutTotal(
+    value: number | null,
+  ): DashboardServiceSplitValue {
     return {
-      total: null,
       fcss: value,
       fwss: null,
     };

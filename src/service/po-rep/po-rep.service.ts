@@ -64,7 +64,7 @@ import {
   PoRepProviderEconomicsStatistics,
   PoRepProvidersEarningsAgainstSla,
   PoRepProvidersHistoryEntry,
-  PoRepProvidersSlaHistoryEntry,
+  PoRepProvidersSlaHistory,
   PoRepProvidersStatistics,
   PoRepProviderStorageStatistics,
   PoRepSLIComplianceHistoryEntry,
@@ -702,7 +702,7 @@ export class PoRepService {
   public async getProvidersSlaHistory(
     periodStart: DateTime | null,
     windowSize: PoRepHistoryParameters['windowSize'],
-  ): Promise<PoRepProvidersSlaHistoryEntry[]> {
+  ): Promise<PoRepProvidersSlaHistory> {
     const slaTarget = this.getSlaTarget();
     const deals = await this.getOnboardedDeals(null, null);
     const history = await this.getDealsComplianceHistory(
@@ -711,7 +711,7 @@ export class PoRepService {
       periodStart,
     );
 
-    return history.map(({ date, dealsCompliance }) => {
+    const data = history.map(({ date, dealsCompliance }) => {
       const providersSla = Object.values(
         groupBy(dealsCompliance, (item) => item.deal.providerId),
       )
@@ -726,15 +726,19 @@ export class PoRepService {
       return {
         date: date,
         averageSla: this.getAverageSla(dealsCompliance),
-        slaTarget: slaTarget,
         providersBelowTargetCount: providersBelowTargetCount,
         providersBelowTargetPercentage: safeDiv(
           providersBelowTargetCount,
           providersSla.length,
-          null,
+          0,
         ),
       };
     });
+
+    return {
+      slaTarget: slaTarget,
+      data: data,
+    };
   }
 
   public async getClient(clientAddress: string): Promise<PoRepClient | null> {
