@@ -221,20 +221,10 @@ export abstract class AbstractPoRepIndexerRunner<
         ? `Indexed ${logs.length} logs up to block ${toBlock.toString()}. Scheduling another run.`
         : `Finished indexing ${logs.length} logs.`,
     );
-    this.isRunning = false;
 
     if (keepRunning) {
       // keep indexing if we havent synced up
       await this.execute();
-    }
-
-    this.logger.log('Starting indexing');
-
-    try {
-      this.isRunning = true;
-    } catch (error) {
-      this.isRunning = false;
-      this.logger.error(`Error during indexing: ${String(error)}`);
     }
   }
 
