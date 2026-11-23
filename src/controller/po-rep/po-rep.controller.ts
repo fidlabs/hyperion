@@ -204,7 +204,7 @@ export class PoRepController extends ControllerBase {
   ): Promise<PoRepClientDealsHistoryEntry[]> {
     const history = await this.poRepService.getClientDealsHistory(
       clientAddress,
-      this.getDashboardPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.periodStart,
       windowSize,
     );
 
@@ -239,7 +239,7 @@ export class PoRepController extends ControllerBase {
   ): Promise<PoRepClientSlaHistoryEntry[]> {
     const history = await this.poRepService.getClientSlaHistory(
       clientAddress,
-      this.getDashboardPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.periodStart,
       windowSize,
     );
 

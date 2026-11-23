@@ -1,9 +1,10 @@
-import { groupBy } from 'lodash';
+import { groupBy, uniq, uniqBy } from 'lodash';
 import { type Prisma } from '../../generated/prisma/client';
 import {
   type AbiEvent,
   type Address,
   getAbiItem,
+  getAddress,
   type GetLogsReturnType,
   isAddressEqual,
 } from 'viem';
@@ -15,6 +16,8 @@ type EventType = (typeof events)[number];
 type RailCreationInput = Prisma.filecoin_pay_railCreateManyInput;
 type PaymentCreationInput = Prisma.filecoin_pay_paymentCreateManyInput;
 type RailUpdateInput = Prisma.filecoin_pay_railUpdateManyMutationInput;
+type AccountStateCreationInput =
+  Prisma.filecoin_pay_account_stateCreateManyInput;
 
 type Log = GetLogsReturnType<
   undefined,
@@ -24,8 +27,12 @@ type Log = GetLogsReturnType<
   bigint
 >[number];
 type Logs = Log[];
+type RailLog = Extract<Log, { args: { railId: bigint } }>;
 
 const events = [
+  getAbiItem({ abi: FilecoinPayV1ABI, name: 'AccountLockupSettled' }),
+  getAbiItem({ abi: FilecoinPayV1ABI, name: 'DepositRecorded' }),
+  getAbiItem({ abi: FilecoinPayV1ABI, name: 'WithdrawRecorded' }),
   getAbiItem({ abi: FilecoinPayV1ABI, name: 'RailCreated' }),
   getAbiItem({ abi: FilecoinPayV1ABI, name: 'RailLockupModified' }),
   getAbiItem({ abi: FilecoinPayV1ABI, name: 'RailOneTimePaymentProcessed' }),
@@ -34,6 +41,10 @@ const events = [
   getAbiItem({ abi: FilecoinPayV1ABI, name: 'RailTerminated' }),
   getAbiItem({ abi: FilecoinPayV1ABI, name: 'RailFinalized' }),
 ] as const satisfies AbiEvent[];
+
+function isRailLog(log: Log): log is RailLog {
+  return 'railId' in log.args;
+}
 
 export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventType> {
   public getName(): string {
@@ -47,7 +58,7 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
   }
 
   protected getVersion(): number {
-    return 1;
+    return 2;
   }
 
   protected getBatchBlockSize(): bigint {
@@ -64,16 +75,20 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
 
   protected prepareCleanup(): Prisma.PrismaPromise<unknown>[] {
     return [
+      this.prismaService.filecoin_pay_account_state.deleteMany(),
       this.prismaService.filecoin_pay_payment.deleteMany(),
       this.prismaService.filecoin_pay_rail.deleteMany(),
     ];
   }
 
-  protected prepareUpdates(logs: Logs): Prisma.PrismaPromise<unknown>[] {
+  protected async prepareUpdates(
+    logs: Logs,
+  ): Promise<Prisma.PrismaPromise<unknown>[]> {
     return [
       ...this.prepareRailsCreations(logs),
       ...this.prepareRailUpdates(logs),
       ...this.preparePaymentsCreations(logs),
+      ...(await this.prepareAccountsStatesCreations(logs)),
     ];
   }
 
@@ -108,7 +123,7 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
   }
 
   private prepareRailUpdates(logs: Logs): Prisma.PrismaPromise<unknown>[] {
-    const filecoinPayLogs = logs.filter((log) => {
+    const filecoinPayLogs = logs.filter(isRailLog).filter((log) => {
       return isAddressEqual(
         log.address,
         this.configService.get('FILECOIN_PAY_CONTRACT_ADDRESS'),
@@ -181,6 +196,129 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
     return [
       this.prismaService.filecoin_pay_payment.createMany({
         data: [...oneTimePaymentsCreations, ...settlementsCreations],
+      }),
+    ];
+  }
+
+  private async prepareAccountsStatesCreations(
+    logs: Logs,
+  ): Promise<Prisma.PrismaPromise<unknown>[]> {
+    if (logs.length === 0) {
+      return [];
+    }
+
+    const rails = await this.prismaService.filecoin_pay_rail.findMany({
+      where: {
+        railId: {
+          in: logs.filter(isRailLog).map((log) => log.args.railId),
+        },
+      },
+    });
+    const railsPayers = new Map(
+      rails.map((rail) => [
+        rail.railId,
+        { token: rail.token, owner: rail.from },
+      ]),
+    );
+
+    logs.forEach((log) => {
+      if (log.eventName === 'RailCreated') {
+        railsPayers.set(log.args.railId, {
+          token: log.args.token,
+          owner: log.args.payer,
+        });
+      }
+    });
+
+    const accounts = uniqBy(
+      logs.flatMap((log) => {
+        switch (log.eventName) {
+          case 'AccountLockupSettled':
+            return [
+              {
+                token: log.args.token,
+                owner: log.args.owner,
+                blockNumber: log.blockNumber,
+              },
+            ];
+          case 'DepositRecorded':
+            return [
+              {
+                token: log.args.token,
+                owner: log.args.to,
+                blockNumber: log.blockNumber,
+              },
+            ];
+          case 'WithdrawRecorded':
+            return [
+              {
+                token: log.args.token,
+                owner: log.args.from,
+                blockNumber: log.blockNumber,
+              },
+            ];
+          case 'RailCreated':
+            return [];
+          default: {
+            const railPayer = railsPayers.get(log.args.railId);
+
+            return railPayer
+              ? [{ ...railPayer, blockNumber: log.blockNumber }]
+              : [];
+          }
+        }
+      }),
+      (account) => `${account.token}-${account.owner}-${account.blockNumber}`,
+    );
+
+    const clients = await this.prismaService.po_rep_deal.findMany({
+      select: {
+        client: true,
+      },
+      where: {
+        client: {
+          in: uniq(accounts.map((account) => account.owner)),
+        },
+      },
+      distinct: ['client'],
+    });
+    const clientsAddresses = new Set(clients.map(({ client }) => client));
+    const clientsAccounts = accounts.filter((account) =>
+      clientsAddresses.has(account.owner),
+    );
+
+    if (clientsAccounts.length === 0) {
+      return [];
+    }
+
+    const accountsStates = await Promise.all(
+      clientsAccounts.map<Promise<AccountStateCreationInput>>(
+        async ({ token, owner, blockNumber }) => {
+          const [funds, lockupCurrent, lockupRate, lockupLastSettledAt] =
+            await this.archiveNodeClient.readContract({
+              address: this.configService.get('FILECOIN_PAY_CONTRACT_ADDRESS'),
+              abi: FilecoinPayV1ABI,
+              functionName: 'accounts',
+              args: [getAddress(token), getAddress(owner)],
+              blockNumber: blockNumber,
+            });
+
+          return {
+            token: token,
+            owner: owner,
+            funds: funds.toString(),
+            lockupCurrent: lockupCurrent.toString(),
+            lockupRate: lockupRate.toString(),
+            lockupLastSettledAt: lockupLastSettledAt,
+            createdAtBlock: blockNumber,
+          };
+        },
+      ),
+    );
+
+    return [
+      this.prismaService.filecoin_pay_account_state.createMany({
+        data: accountsStates,
       }),
     ];
   }

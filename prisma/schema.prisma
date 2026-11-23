@@ -193,6 +193,19 @@ model filecoin_pay_payment {
   @@index([railId, createdAtBlock(sort: Desc)])
 }
 
+model filecoin_pay_account_state {
+  token               String
+  owner               String
+  funds               Decimal @db.Decimal(78, 0)
+  lockupCurrent       Decimal @db.Decimal(78, 0)
+  lockupRate          Decimal @db.Decimal(78, 0)
+  lockupLastSettledAt BigInt
+  createdAtBlock      BigInt
+
+  @@id([token, owner, createdAtBlock])
+  @@index([owner, createdAtBlock(sort: Desc)])
+}
+
 enum PoRepDealState {
   PROPOSED
   ACCEPTED

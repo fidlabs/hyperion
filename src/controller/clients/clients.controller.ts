@@ -9,9 +9,9 @@ import {
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
   ControllerBase,
-  DashboardPeriodBoundaries,
+  StatisticsPeriodBoundaries,
 } from '../base/controller-base';
-import { DashboardStatisticsRequest } from '../base/types.controller-base';
+import { StatisticsRequest } from '../base/types.controller-base';
 import {
   ClientsHistoryEntry,
   ClientsHistoryRequest,
@@ -84,11 +84,11 @@ export class ClientsController extends ControllerBase {
     description: 'Statistics for FWSS are not implemented yet',
   })
   public async getStatistics(
-    @Query() { period = '30d', service = 'all' }: DashboardStatisticsRequest,
+    @Query() { period = '30d', service = 'all' }: StatisticsRequest,
   ): Promise<ClientsStatistics> {
     this.validateServiceImplemented(service);
 
-    const periods = this.getDashboardPeriods(period);
+    const periods = this.getStatisticsPeriods(period);
     const [current, previous] = await Promise.all([
       this.getPeriodStatistics(periods.current),
       periods.previous !== null
@@ -129,7 +129,7 @@ export class ClientsController extends ControllerBase {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getClientsHistory(
-      this.getDashboardPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.periodStart,
       windowSize,
     );
 
@@ -158,12 +158,12 @@ export class ClientsController extends ControllerBase {
     description: 'History for FWSS is not implemented yet',
   })
   public async getReturningHistory(
-    @Query() { period = '30d', service = 'all' }: DashboardStatisticsRequest,
+    @Query() { period = '30d', service = 'all' }: StatisticsRequest,
   ): Promise<ClientsReturningHistoryEntry[]> {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getReturningClientsHistory(
-      this.getDashboardPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.periodStart,
       'month',
     );
 
@@ -206,7 +206,7 @@ export class ClientsController extends ControllerBase {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getClientsRevenueConcentrationHistory(
-      this.getDashboardPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.periodStart,
       windowSize,
     );
 
@@ -221,7 +221,7 @@ export class ClientsController extends ControllerBase {
   private async getPeriodStatistics({
     periodStart,
     periodEnd,
-  }: DashboardPeriodBoundaries): Promise<ClientsPeriodStatistics> {
+  }: StatisticsPeriodBoundaries): Promise<ClientsPeriodStatistics> {
     const fcss = await this.poRepService.getClientsStatistics(
       periodStart,
       periodEnd,

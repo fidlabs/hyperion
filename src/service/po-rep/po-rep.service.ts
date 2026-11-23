@@ -27,7 +27,6 @@ import {
   createPoRepProvidersHistoryQuery,
 } from 'src/db/queries/po-rep-providers-statistics.query';
 import {
-  ARCHIVE_NODE_CLIENT,
   PoRepConfig,
   PoRepPublicClient,
   RECENT_NODE_CLIENT,
@@ -58,7 +57,6 @@ import {
   PoRepClientsList,
   PoRepClientsRevenueConcentrationHistoryEntry,
   PoRepClientsStatistics,
-  PoRepClientWalletStatus,
   PoRepClientSlaHistoryEntry,
   PoRepComplianceState,
   PoRepDeal,
@@ -85,7 +83,6 @@ import {
   PoRepSLIIndicator,
 } from './types.po-rep';
 import { ERC20TokenInfoService } from '../erc20-token-info/erc20-token-info.service';
-import FilecoinPayV1ABI from 'src/po-rep-indexer/abis/filecoin-pay-v1-abi';
 
 interface TokenDetails {
   tokenAddress: string;
@@ -130,8 +127,6 @@ export class PoRepService {
     private readonly priceOracle: PoRepPriceOracleService,
     @Inject(RECENT_NODE_CLIENT)
     private readonly recentNodeClient: PoRepPublicClient,
-    @Inject(ARCHIVE_NODE_CLIENT)
-    private readonly archiveNodeClient: PoRepPublicClient,
     @InjectQueryBuilder() private readonly queryBuilder: QueryBuilder,
     private readonly urlFinderService: UrlFinderService,
     private readonly configService: ConfigService<PoRepConfig, true>,
@@ -404,10 +399,10 @@ export class PoRepService {
     const periodEndEpoch = dateToFilecoinBlockHeight(periodEnd.toJSDate(), {
       testnet: this.isTestnet(),
     });
-    const isCurrentPeriod = periodEnd >= DateTime.utc().minus({ hours: 1 });
 
-    const [statistics, clients] = await Promise.all([
-      createPoRepClientsStatisticsQuery(this.queryBuilder, {
+    const statistics = await createPoRepClientsStatisticsQuery(
+      this.queryBuilder,
+      {
         periodStartEpoch:
           periodStart !== null
             ? dateToFilecoinBlockHeight(periodStart.toJSDate(), {
@@ -415,28 +410,15 @@ export class PoRepService {
               })
             : null,
         periodEndEpoch: periodEndEpoch,
-      }).executeTakeFirstOrThrow(),
-      createPoRepClientsListQuery(this.queryBuilder, {
-        periodEndEpoch: periodEndEpoch,
-      }).execute(),
-    ]);
+      },
+    ).executeTakeFirstOrThrow();
 
-    const clientsAccountsInfo = await this.getClientsAccountsInfo(
-      clients.map((client) => {
-        return {
-          clientAddress: client.client_address,
-          tokensAddresses: client.tokens_addresses ?? [],
-        };
-      }),
-      isCurrentPeriod ? null : BigInt(periodEndEpoch),
-    );
     const totalClientsCount = stringToNumber(
       statistics.clients_count.toString(),
     );
-    const fundedWalletsCount = clientsAccountsInfo.filter(
-      (clientAccountsInfo) =>
-        clientAccountsInfo.some(([, currentFunds]) => currentFunds > 0n),
-    ).length;
+    const fundedWalletsCount = stringToNumber(
+      statistics.funded_clients_count.toString(),
+    );
 
     return {
       totalClientsCount: totalClientsCount,
@@ -546,29 +528,24 @@ export class PoRepService {
       periodStart: periodStart !== null ? periodStart.toJSDate() : null,
     }).execute();
 
-    const firstWindowDate =
-      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+    const history = results.map((result) => {
+      return {
+        date: DateTime.fromJSDate(result.window_start, {
+          zone: 'UTC',
+        }).toISODate(),
+        newProvidersCount: stringToNumber(
+          result.new_providers_count.toString(),
+        ),
+        totalProvidersCount: stringToNumber(
+          result.total_providers_count.toString(),
+        ),
+        activeProvidersCount: stringToNumber(
+          result.active_providers_count.toString(),
+        ),
+      };
+    });
 
-    return results
-      .map((result) => {
-        return {
-          date: DateTime.fromJSDate(result.window_start, {
-            zone: 'UTC',
-          }).toISODate(),
-          newProvidersCount: stringToNumber(
-            result.new_providers_count.toString(),
-          ),
-          totalProvidersCount: stringToNumber(
-            result.total_providers_count.toString(),
-          ),
-          activeProvidersCount: stringToNumber(
-            result.active_providers_count.toString(),
-          ),
-        };
-      })
-      .filter(
-        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
-      );
+    return this.filterHistoryFromPeriodStart(history, periodStart, windowSize);
   }
 
   public async getClientsHistory(
@@ -583,31 +560,26 @@ export class PoRepService {
       periodStart: periodStart !== null ? periodStart.toJSDate() : null,
     }).execute();
 
-    const firstWindowDate =
-      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
-
-    return results
-      .map((result) => {
-        const totalClientsCount = stringToNumber(
-          result.total_clients_count.toString(),
-        );
-
-        return {
-          date: DateTime.fromJSDate(result.window_start, {
-            zone: 'UTC',
-          }).toISODate(),
-          newClientsCount: stringToNumber(result.new_clients_count.toString()),
-          totalClientsCount: totalClientsCount,
-          averageDatasetsPerClient: safeDiv(
-            stringToNumber(result.total_datasets_count.toString()),
-            totalClientsCount,
-            null,
-          ),
-        };
-      })
-      .filter(
-        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+    const history = results.map((result) => {
+      const totalClientsCount = stringToNumber(
+        result.total_clients_count.toString(),
       );
+
+      return {
+        date: DateTime.fromJSDate(result.window_start, {
+          zone: 'UTC',
+        }).toISODate(),
+        newClientsCount: stringToNumber(result.new_clients_count.toString()),
+        totalClientsCount: totalClientsCount,
+        averageDatasetsPerClient: safeDiv(
+          stringToNumber(result.total_datasets_count.toString()),
+          totalClientsCount,
+          null,
+        ),
+      };
+    });
+
+    return this.filterHistoryFromPeriodStart(history, periodStart, windowSize);
   }
 
   public async getReturningClientsHistory(
@@ -625,29 +597,24 @@ export class PoRepService {
       },
     ).execute();
 
-    const firstWindowDate =
-      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+    const history = results.map((result) => {
+      return {
+        date: DateTime.fromJSDate(result.window_start, {
+          zone: 'UTC',
+        }).toISODate(),
+        returningClientsCount: stringToNumber(
+          result.returning_clients_count.toString(),
+        ),
+        onboardedNewDatasetsClientsCount: stringToNumber(
+          result.onboarded_new_datasets_clients_count.toString(),
+        ),
+        extendedDealsClientsCount: stringToNumber(
+          result.extended_deals_clients_count.toString(),
+        ),
+      };
+    });
 
-    return results
-      .map((result) => {
-        return {
-          date: DateTime.fromJSDate(result.window_start, {
-            zone: 'UTC',
-          }).toISODate(),
-          returningClientsCount: stringToNumber(
-            result.returning_clients_count.toString(),
-          ),
-          onboardedNewDatasetsClientsCount: stringToNumber(
-            result.onboarded_new_datasets_clients_count.toString(),
-          ),
-          extendedDealsClientsCount: stringToNumber(
-            result.extended_deals_clients_count.toString(),
-          ),
-        };
-      })
-      .filter(
-        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
-      );
+    return this.filterHistoryFromPeriodStart(history, periodStart, windowSize);
   }
 
   public async getClientsRevenueConcentrationHistory(
@@ -684,9 +651,6 @@ export class PoRepService {
     const endDate = DateTime.utc().startOf(windowSize);
     const entriesCount =
       endDate.diff(startDate, windowSize)[`${windowSize}s`] + 1;
-    const firstWindowDate =
-      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
-
     const uniqueTokens = uniq(data.map((item) => item.token_address));
     const [tokensDetails, tokensExchangeRatesUSD] = await Promise.all([
       this.getTokensDetails(uniqueTokens),
@@ -699,67 +663,69 @@ export class PoRepService {
     );
     const clientsRevenueUSD = new Map<string, PrismaRuntime.Decimal>();
 
-    return [...new Array(entriesCount)]
-      .map((_, index) => {
-        const entryISODate = startDate
-          .plus({ [windowSize]: index })
-          .toISODate();
+    const history = [...new Array(entriesCount)].map((_, index) => {
+      const entryISODate = startDate.plus({ [windowSize]: index }).toISODate();
 
-        (dataByWindow[entryISODate] ?? []).forEach((item) => {
-          const tokenDetails = tokensDetails.get(item.token_address);
-          const tokenExchangeRateUSD = tokensExchangeRatesUSD.get(
-            item.token_address,
-          );
-
-          if (!tokenDetails || !tokenExchangeRateUSD) {
-            throw new Error(
-              `Exchange rate or info not found for token "${item.token_address}"`,
-            );
-          }
-
-          const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
-
-          clientsRevenueUSD.set(
-            item.client_address,
-            (clientsRevenueUSD.get(item.client_address) ?? Decimal(0)).add(
-              Decimal(item.window_total.toString())
-                .div(tokenExponent.toString())
-                .mul(tokenExchangeRateUSD),
-            ),
-          );
-        });
-
-        const revenuesUSD = [...clientsRevenueUSD.values()].sort((a, b) =>
-          b.comparedTo(a),
+      (dataByWindow[entryISODate] ?? []).forEach((item) => {
+        const tokenDetails = tokensDetails.get(item.token_address);
+        const tokenExchangeRateUSD = tokensExchangeRatesUSD.get(
+          item.token_address,
         );
-        const totalRevenueUSD = revenuesUSD.reduce(
-          (totalUSD, revenueUSD) => totalUSD.add(revenueUSD),
-          Decimal(0),
-        );
-        const topClientsRevenueUSD = revenuesUSD
-          .slice(0, topClientsCount)
-          .reduce(
-            (totalUSD, revenueUSD) => totalUSD.add(revenueUSD),
-            Decimal(0),
-          );
 
-        return {
-          date: entryISODate,
-          topClientsRevenueShare: totalRevenueUSD.isZero()
-            ? null
-            : topClientsRevenueUSD.div(totalRevenueUSD).toNumber(),
-        };
-      })
-      .filter(
-        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
+        if (!tokenDetails || !tokenExchangeRateUSD) {
+          throw new Error(
+            `Exchange rate or info not found for token "${item.token_address}"`,
+          );
+        }
+
+        const tokenExponent = 10n ** BigInt(tokenDetails.tokenDecimals);
+
+        clientsRevenueUSD.set(
+          item.client_address,
+          (clientsRevenueUSD.get(item.client_address) ?? Decimal(0)).add(
+            Decimal(item.window_total.toString())
+              .div(tokenExponent.toString())
+              .mul(tokenExchangeRateUSD),
+          ),
+        );
+      });
+
+      const revenuesUSD = [...clientsRevenueUSD.values()].sort((a, b) =>
+        b.comparedTo(a),
       );
+      const totalRevenueUSD = revenuesUSD.reduce(
+        (totalUSD, revenueUSD) => totalUSD.add(revenueUSD),
+        Decimal(0),
+      );
+      const topClientsRevenueUSD = revenuesUSD
+        .slice(0, topClientsCount)
+        .reduce((totalUSD, revenueUSD) => totalUSD.add(revenueUSD), Decimal(0));
+
+      return {
+        date: entryISODate,
+        topClientsRevenueShare: totalRevenueUSD.isZero()
+          ? null
+          : topClientsRevenueUSD.div(totalRevenueUSD).toNumber(),
+      };
+    });
+
+    return this.filterHistoryFromPeriodStart(history, periodStart, windowSize);
   }
 
   public async getClients({
     limit = 0,
     page = 1,
   }: PaginationParameters): Promise<PoRepClientsList> {
-    const baseQuery = createPoRepClientsListQuery(this.queryBuilder);
+    const now = DateTime.utc();
+    const baseQuery = createPoRepClientsListQuery(this.queryBuilder, {
+      currentEpoch: dateToFilecoinBlockHeight(now.toJSDate(), {
+        testnet: this.isTestnet(),
+      }),
+      lowBalanceEpoch: dateToFilecoinBlockHeight(
+        now.plus({ days: walletLowBalanceDays }).toJSDate(),
+        { testnet: this.isTestnet() },
+      ),
+    });
     let resultsQuery = baseQuery
       .orderBy('datasets_count', 'desc')
       .orderBy('client_address', 'asc');
@@ -777,21 +743,13 @@ export class PoRepService {
     ]);
 
     const totalCount = stringToNumber(countResult.count.toString()) ?? 0;
-    const walletsStatuses = await this.getClientsWalletsStatuses(
-      results.map((result) => {
-        return {
-          clientAddress: result.client_address,
-          tokensAddresses: result.tokens_addresses ?? [],
-        };
-      }),
-    );
 
     return {
-      data: results.map((result, index) => {
+      data: results.map((result) => {
         return {
           clientAddress: result.client_address,
           datasetsCount: stringToNumber(result.datasets_count.toString()),
-          walletStatus: walletsStatuses[index],
+          walletStatus: result.wallet_status,
         };
       }),
       pagination: {
@@ -800,69 +758,6 @@ export class PoRepService {
         totalCount: totalCount,
       },
     };
-  }
-
-  private getClientsAccountsInfo(
-    clients: { clientAddress: string; tokensAddresses: string[] }[],
-    blockNumber: bigint | null = null,
-  ) {
-    const nodeClient =
-      blockNumber !== null ? this.archiveNodeClient : this.recentNodeClient;
-
-    return Promise.all(
-      clients.map(({ clientAddress, tokensAddresses }) =>
-        Promise.all(
-          tokensAddresses.map((tokenAddress) =>
-            nodeClient.readContract({
-              address: this.configService.get('FILECOIN_PAY_CONTRACT_ADDRESS'),
-              abi: FilecoinPayV1ABI,
-              functionName: 'getAccountInfoIfSettled',
-              args: [getAddress(tokenAddress), getAddress(clientAddress)],
-              blockNumber: blockNumber ?? undefined,
-            }),
-          ),
-        ),
-      ),
-    );
-  }
-
-  private async getClientsWalletsStatuses(
-    clients: { clientAddress: string; tokensAddresses: string[] }[],
-  ): Promise<PoRepClientWalletStatus[]> {
-    const clientsAccountsInfo = await this.getClientsAccountsInfo(clients);
-    const lowBalanceEpoch = BigInt(
-      dateToFilecoinBlockHeight(
-        DateTime.utc().plus({ days: walletLowBalanceDays }).toJSDate(),
-        { testnet: this.isTestnet() },
-      ),
-    );
-
-    return clientsAccountsInfo.map((clientAccountsInfo) => {
-      const setUpAccountsInfo = clientAccountsInfo.filter(
-        ([, currentFunds, , currentLockupRate]) =>
-          currentFunds > 0n || currentLockupRate > 0n,
-      );
-
-      if (setUpAccountsInfo.length === 0) {
-        return 'not_set_up';
-      }
-
-      if (
-        setUpAccountsInfo.some(([, , availableFunds]) => availableFunds === 0n)
-      ) {
-        return 'empty';
-      }
-
-      if (
-        setUpAccountsInfo.some(
-          ([fundedUntilEpoch]) => fundedUntilEpoch < lowBalanceEpoch,
-        )
-      ) {
-        return 'low_balance';
-      }
-
-      return 'funded';
-    });
   }
 
   public async getDealsPaymentsSummaryHistory({
@@ -1208,24 +1103,19 @@ export class PoRepService {
       },
     ).execute();
 
-    const firstWindowDate =
-      periodStart !== null ? periodStart.startOf(windowSize).toISODate() : null;
+    const history = results.map((result) => {
+      return {
+        date: DateTime.fromJSDate(result.window_start, {
+          zone: 'UTC',
+        }).toISODate(),
+        dealsCount: stringToNumber(result.window_total.toString()),
+        cumulativeDealsCount: stringToNumber(
+          result.cumulative_total.toString(),
+        ),
+      };
+    });
 
-    return results
-      .map((result) => {
-        return {
-          date: DateTime.fromJSDate(result.window_start, {
-            zone: 'UTC',
-          }).toISODate(),
-          dealsCount: stringToNumber(result.window_total.toString()),
-          cumulativeDealsCount: stringToNumber(
-            result.cumulative_total.toString(),
-          ),
-        };
-      })
-      .filter(
-        (entry) => firstWindowDate === null || entry.date >= firstWindowDate,
-      );
+    return this.filterHistoryFromPeriodStart(history, periodStart, windowSize);
   }
 
   public async getClientSlaHistory(
@@ -1745,6 +1635,20 @@ export class PoRepService {
         return this.getDealCompliance(deal, measurements, from, to);
       }),
     );
+  }
+
+  private filterHistoryFromPeriodStart<Entry extends { date: string }>(
+    history: Entry[],
+    periodStart: DateTime | null,
+    windowSize: PoRepHistoryParameters['windowSize'],
+  ): Entry[] {
+    if (periodStart === null) {
+      return history;
+    }
+
+    const firstWindowDate = periodStart.startOf(windowSize).toISODate();
+
+    return history.filter((entry) => entry.date >= firstWindowDate);
   }
 
   private getSlaTarget(): number {
