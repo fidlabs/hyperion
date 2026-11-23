@@ -1,7 +1,7 @@
 import { ApiProperty, IntersectionType, PickType } from '@nestjs/swagger';
 import { PoRepHistoryParameters } from 'src/service/po-rep/types.po-rep';
 import { F0IdInput, IsF0IdInput } from 'src/utils/validators';
-import { DashboardStatisticsRequest } from '../base/types.controller-base';
+import { StatisticsRequest } from '../base/types.controller-base';
 
 export class PoRepProviderResourceParameters {
   @ApiProperty({
@@ -14,6 +14,6 @@ export class PoRepProviderResourceParameters {
 }
 
 export class PoRepClientHistoryParameters extends IntersectionType(
-  PickType(DashboardStatisticsRequest, ['period']),
+  PickType(StatisticsRequest, ['period']),
   PoRepHistoryParameters,
 ) {}

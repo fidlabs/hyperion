@@ -1,17 +1,17 @@
 import { ApiProperty, IntersectionType, PickType } from '@nestjs/swagger';
 import { PoRepHistoryParameters } from 'src/service/po-rep/types.po-rep';
 import {
-  DashboardPeriod,
-  dashboardPeriods,
-  DashboardService,
-  dashboardServices,
-  DashboardServiceSplitValue,
-  DashboardServiceValue,
-  DashboardStatisticsRequest,
+  StatisticsPeriod,
+  statisticsPeriods,
+  ServiceType,
+  serviceTypes,
+  ServiceTypeSplitValue,
+  ServiceTypeValue,
+  StatisticsRequest,
 } from '../base/types.controller-base';
 
 export class StorageProvidersHistoryRequest extends IntersectionType(
-  DashboardStatisticsRequest,
+  StatisticsRequest,
   PoRepHistoryParameters,
 ) {}
 
@@ -24,24 +24,24 @@ export class StorageProvidersHistoryEntry {
   @ApiProperty({
     description: 'Count of providers registered in SP Registry in the window',
   })
-  newProvidersCount: DashboardServiceValue;
+  newProvidersCount: ServiceTypeValue;
 
   @ApiProperty({
     description:
       'Count of providers registered in SP Registry up to the window end',
   })
-  totalProvidersCount: DashboardServiceValue;
+  totalProvidersCount: ServiceTypeValue;
 
   @ApiProperty({
     description: `Count of providers with at least one deal active in the
       window. Deal is active from reaching ACTIVE state until reaching
       FINALIZED, EXPIRED or EARLY_TERMINATED state.`,
   })
-  activeProvidersCount: DashboardServiceValue;
+  activeProvidersCount: ServiceTypeValue;
 }
 
 export class StorageProvidersEarningsAgainstSlaRequest extends PickType(
-  DashboardStatisticsRequest,
+  StatisticsRequest,
   ['service'],
 ) {}
 
@@ -55,7 +55,7 @@ export class StorageProviderEarningsAgainstSla {
     description: 'Service the values are for',
     enum: ['fcss', 'fwss'],
   })
-  service: Exclude<DashboardService, 'all'>;
+  service: Exclude<ServiceType, 'all'>;
 
   @ApiProperty({
     description: 'Net amount settled to the provider in the period, in USD',
@@ -88,7 +88,7 @@ export class StorageProvidersEarningsAgainstSla {
     description: `SLA target that providers SLA is compared against, separate
       for each service`,
   })
-  slaTarget: DashboardServiceSplitValue;
+  slaTarget: ServiceTypeSplitValue;
 
   @ApiProperty({
     description: `Providers with earnings or deals active in the period, one
@@ -110,21 +110,21 @@ export class StorageProvidersSlaHistoryEntry {
       of URL Finder measurements in which all SLIs required by the deal were
       met. Null when none of the deals was measured in the window.`,
   })
-  averageSla: DashboardServiceValue;
+  averageSla: ServiceTypeValue;
 
   @ApiProperty({
     description: `Count of providers with SLA below the service SLA target in
       the window. Provider SLA is the average SLA of its deals active in the
       window. Providers without measurements in the window are not included.`,
   })
-  providersBelowTargetCount: DashboardServiceSplitValue;
+  providersBelowTargetCount: ServiceTypeSplitValue;
 
   @ApiProperty({
     description: `Percentage of providers measured in the window with SLA below
       the service SLA target. 0 when none of the providers was measured in the
       window.`,
   })
-  providersBelowTargetPercentage: DashboardServiceSplitValue;
+  providersBelowTargetPercentage: ServiceTypeSplitValue;
 }
 
 export class StorageProvidersSlaHistory {
@@ -132,7 +132,7 @@ export class StorageProvidersSlaHistory {
     description: `SLA target that providers SLA is compared against, separate
       for each service`,
   })
-  slaTarget: DashboardServiceSplitValue;
+  slaTarget: ServiceTypeSplitValue;
 
   @ApiProperty({
     description: 'SLA history entries, one per window',
@@ -158,42 +158,42 @@ export class StorageProvidersPeriodStatistics {
     description:
       'Count of providers registered in SP Registry up to period end',
   })
-  totalProvidersCount: DashboardServiceValue;
+  totalProvidersCount: ServiceTypeValue;
 
   @ApiProperty({
     description: `Count of providers with at least one active deal at period
       end. Deal is active when it reached ACTIVE state and did not reach
       FINALIZED, EXPIRED or EARLY_TERMINATED state.`,
   })
-  activeProvidersCount: DashboardServiceValue;
+  activeProvidersCount: ServiceTypeValue;
 
   @ApiProperty({
     description: 'Net amount settled to providers in the period, in USD',
   })
-  earningsUSD: DashboardServiceValue;
+  earningsUSD: ServiceTypeValue;
 
   @ApiProperty({
     description: `Average SLA of deals active in the period, eg. average share
       of URL Finder measurements in which all SLIs required by the deal were
       met. Null when none of the deals was measured in the period.`,
   })
-  averageSla: DashboardServiceValue;
+  averageSla: ServiceTypeValue;
 }
 
 export class StorageProvidersStatistics {
   @ApiProperty({
     description: 'Period of the statistics',
-    enum: dashboardPeriods,
-    enumName: 'DashboardPeriod',
+    enum: statisticsPeriods,
+    enumName: 'StatisticsPeriod',
   })
-  period: DashboardPeriod;
+  period: StatisticsPeriod;
 
   @ApiProperty({
     description: 'Service of the statistics',
-    enum: dashboardServices,
-    enumName: 'DashboardService',
+    enum: serviceTypes,
+    enumName: 'ServiceType',
   })
-  service: DashboardService;
+  service: ServiceType;
 
   @ApiProperty({
     description: 'Statistics for the requested period',

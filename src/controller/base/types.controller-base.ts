@@ -66,40 +66,40 @@ export class SortingInfoRequest {
   order?: 'asc' | 'desc';
 }
 
-// Dashboards
-export const dashboardPeriods = ['30d', '90d', '1y', 'all'] as const;
+// Statistics
+export const statisticsPeriods = ['30d', '90d', '1y', 'all'] as const;
 
-export type DashboardPeriod = (typeof dashboardPeriods)[number];
+export type StatisticsPeriod = (typeof statisticsPeriods)[number];
 
-export const dashboardServices = ['all', 'fcss', 'fwss'] as const;
+export const serviceTypes = ['all', 'fcss', 'fwss'] as const;
 
-export type DashboardService = (typeof dashboardServices)[number];
+export type ServiceType = (typeof serviceTypes)[number];
 
-export class DashboardStatisticsRequest {
+export class StatisticsRequest {
   @ApiPropertyOptional({
     description: `Period of the statistics, "30d" by default. Values of the
       previous period of the same length are returned for comparison, except
       for "all".`,
-    enum: dashboardPeriods,
-    enumName: 'DashboardPeriod',
+    enum: statisticsPeriods,
+    enumName: 'StatisticsPeriod',
     default: '30d',
   })
   @IsOptional()
-  @IsIn(dashboardPeriods)
-  period?: DashboardPeriod;
+  @IsIn(statisticsPeriods)
+  period?: StatisticsPeriod;
 
   @ApiPropertyOptional({
     description: 'Service of the statistics, "all" by default',
-    enum: dashboardServices,
-    enumName: 'DashboardService',
+    enum: serviceTypes,
+    enumName: 'ServiceType',
     default: 'all',
   })
   @IsOptional()
-  @IsIn(dashboardServices)
-  service?: DashboardService;
+  @IsIn(serviceTypes)
+  service?: ServiceType;
 }
 
-export class DashboardServiceValue {
+export class ServiceTypeValue {
   @ApiProperty({
     description: `Value for all requested services. Services that are not
       implemented yet are not included.`,
@@ -124,7 +124,6 @@ export class DashboardServiceValue {
   fwss: number | null;
 }
 
-export class DashboardServiceSplitValue extends OmitType(
-  DashboardServiceValue,
-  ['total'],
-) {}
+export class ServiceTypeSplitValue extends OmitType(ServiceTypeValue, [
+  'total',
+]) {}

@@ -9,9 +9,9 @@ import {
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
   ControllerBase,
-  DashboardPeriodBoundaries,
+  StatisticsPeriodBoundaries,
 } from '../base/controller-base';
-import { DashboardStatisticsRequest } from '../base/types.controller-base';
+import { StatisticsRequest } from '../base/types.controller-base';
 import {
   StorageProvidersEarningsAgainstSla,
   StorageProvidersEarningsAgainstSlaRequest,
@@ -47,11 +47,11 @@ export class StorageProvidersController extends ControllerBase {
     description: 'Statistics for FWSS are not implemented yet',
   })
   public async getStatistics(
-    @Query() { period = '30d', service = 'all' }: DashboardStatisticsRequest,
+    @Query() { period = '30d', service = 'all' }: StatisticsRequest,
   ): Promise<StorageProvidersStatistics> {
     this.validateServiceImplemented(service);
 
-    const periods = this.getDashboardPeriods(period);
+    const periods = this.getStatisticsPeriods(period);
     const [current, previous] = await Promise.all([
       this.getPeriodStatistics(periods.current),
       periods.previous !== null
@@ -92,7 +92,7 @@ export class StorageProvidersController extends ControllerBase {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getProvidersHistory(
-      this.getDashboardPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.periodStart,
       windowSize,
     );
 
@@ -131,7 +131,7 @@ export class StorageProvidersController extends ControllerBase {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getProvidersSlaHistory(
-      this.getDashboardPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.periodStart,
       windowSize,
     );
 
@@ -171,7 +171,7 @@ export class StorageProvidersController extends ControllerBase {
   ): Promise<StorageProvidersEarningsAgainstSla> {
     this.validateServiceImplemented(service);
 
-    const { periodStart, periodEnd } = this.getDashboardPeriods('30d').current;
+    const { periodStart, periodEnd } = this.getStatisticsPeriods('30d').current;
     const fcss = await this.poRepService.getProvidersEarningsAgainstSla(
       periodStart,
       periodEnd,
@@ -193,7 +193,7 @@ export class StorageProvidersController extends ControllerBase {
   private async getPeriodStatistics({
     periodStart,
     periodEnd,
-  }: DashboardPeriodBoundaries): Promise<StorageProvidersPeriodStatistics> {
+  }: StatisticsPeriodBoundaries): Promise<StorageProvidersPeriodStatistics> {
     const fcss = await this.poRepService.getProvidersStatistics(
       periodStart,
       periodEnd,

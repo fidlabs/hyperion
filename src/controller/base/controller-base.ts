@@ -1,10 +1,10 @@
 import { BadRequestException, NotImplementedException } from '@nestjs/common';
 import { DateTime, DurationLike } from 'luxon';
 import {
-  DashboardPeriod,
-  DashboardService,
-  DashboardServiceSplitValue,
-  DashboardServiceValue,
+  StatisticsPeriod,
+  ServiceType,
+  ServiceTypeSplitValue,
+  ServiceTypeValue,
   PaginationInfo,
   PaginationInfoRequest,
   PaginationInfoResponse,
@@ -13,25 +13,26 @@ import {
 import { DatabasePaginationQuery } from 'src/utils/utils';
 import { Prisma } from 'src/generated/prisma/client';
 
-const dashboardPeriodDurations: Record<DashboardPeriod, DurationLike | null> = {
-  '30d': { days: 30 },
-  '90d': { days: 90 },
-  '1y': { years: 1 },
-  all: null,
-};
+const statisticsPeriodDurations: Record<StatisticsPeriod, DurationLike | null> =
+  {
+    '30d': { days: 30 },
+    '90d': { days: 90 },
+    '1y': { years: 1 },
+    all: null,
+  };
 
-export interface DashboardPeriodBoundaries {
+export interface StatisticsPeriodBoundaries {
   periodStart: DateTime | null;
   periodEnd: DateTime;
 }
 
 export class ControllerBase {
-  public getDashboardPeriods(period: DashboardPeriod): {
-    current: DashboardPeriodBoundaries;
-    previous: DashboardPeriodBoundaries | null;
+  public getStatisticsPeriods(period: StatisticsPeriod): {
+    current: StatisticsPeriodBoundaries;
+    previous: StatisticsPeriodBoundaries | null;
   } {
     const periodEnd = DateTime.utc();
-    const periodDuration = dashboardPeriodDurations[period];
+    const periodDuration = statisticsPeriodDurations[period];
 
     if (periodDuration === null) {
       return {
@@ -51,7 +52,7 @@ export class ControllerBase {
     };
   }
 
-  protected validateServiceImplemented(service: DashboardService) {
+  protected validateServiceImplemented(service: ServiceType) {
     if (service === 'fwss') {
       throw new NotImplementedException(
         'Statistics for FWSS are not implemented yet',
@@ -59,7 +60,7 @@ export class ControllerBase {
     }
   }
 
-  protected fcssOnly(value: number | null): DashboardServiceValue {
+  protected fcssOnly(value: number | null): ServiceTypeValue {
     return {
       total: value,
       fcss: value,
@@ -67,9 +68,7 @@ export class ControllerBase {
     };
   }
 
-  protected fcssOnlyWithoutTotal(
-    value: number | null,
-  ): DashboardServiceSplitValue {
+  protected fcssOnlyWithoutTotal(value: number | null): ServiceTypeSplitValue {
     return {
       fcss: value,
       fwss: null,

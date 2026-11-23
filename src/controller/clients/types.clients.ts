@@ -6,12 +6,12 @@ import {
   PoRepHistoryParameters,
 } from 'src/service/po-rep/types.po-rep';
 import {
-  DashboardPeriod,
-  dashboardPeriods,
-  DashboardService,
-  dashboardServices,
-  DashboardServiceValue,
-  DashboardStatisticsRequest,
+  StatisticsPeriod,
+  statisticsPeriods,
+  ServiceType,
+  serviceTypes,
+  ServiceTypeValue,
+  StatisticsRequest,
 } from '../base/types.controller-base';
 
 export class ClientsReturningHistoryEntry {
@@ -24,23 +24,23 @@ export class ClientsReturningHistoryEntry {
     description: `Count of clients that had a deal before the month and created
       a new deal in the month`,
   })
-  returningClientsCount: DashboardServiceValue;
+  returningClientsCount: ServiceTypeValue;
 
   @ApiProperty({
     description: `Count of returning clients that onboarded a new dataset in the
       month. Dataset is a unique pair of client and deal manifest hash.`,
   })
-  onboardedNewDatasetsClientsCount: DashboardServiceValue;
+  onboardedNewDatasetsClientsCount: ServiceTypeValue;
 
   @ApiProperty({
     description: `Count of returning clients that only extended deals in the
       month, i.e. created deals for datasets they already had`,
   })
-  extendedDealsClientsCount: DashboardServiceValue;
+  extendedDealsClientsCount: ServiceTypeValue;
 }
 
 export class ClientsHistoryRequest extends IntersectionType(
-  DashboardStatisticsRequest,
+  StatisticsRequest,
   PoRepHistoryParameters,
 ) {}
 
@@ -54,19 +54,19 @@ export class ClientsHistoryEntry {
     description: `Count of clients that made their first deal in the window.
       Client is a single payer wallet.`,
   })
-  newClientsCount: DashboardServiceValue;
+  newClientsCount: ServiceTypeValue;
 
   @ApiProperty({
     description: 'Count of clients with at least one deal up to the window end',
   })
-  totalClientsCount: DashboardServiceValue;
+  totalClientsCount: ServiceTypeValue;
 
   @ApiProperty({
     description: `Average count of datasets per client up to the window end.
       Dataset is a unique pair of client and deal manifest hash, deals in any
       state are counted. Null when there are no clients yet.`,
   })
-  averageDatasetsPerClient: DashboardServiceValue;
+  averageDatasetsPerClient: ServiceTypeValue;
 }
 
 export class ClientsRevenueConcentrationHistoryEntry {
@@ -80,11 +80,11 @@ export class ClientsRevenueConcentrationHistoryEntry {
       revenue paid up to the window end. Revenue is the amount settled on
       Filecoin Pay rails of client deals. Null when there is no revenue yet.`,
   })
-  topClientsRevenueShare: DashboardServiceValue;
+  topClientsRevenueShare: ServiceTypeValue;
 }
 
 export class ClientsListRequest extends IntersectionType(
-  PickType(DashboardStatisticsRequest, ['service']),
+  PickType(StatisticsRequest, ['service']),
   PaginationParameters,
 ) {}
 
@@ -98,7 +98,7 @@ export class ClientsListEntry {
     description: `Count of client datasets. Dataset is a unique pair of client
       and deal manifest hash, deals in any state are counted.`,
   })
-  datasetsCount: DashboardServiceValue;
+  datasetsCount: ServiceTypeValue;
 
   @ApiProperty({
     description: `Status of client Filecoin Pay account. Not set up when it has
@@ -140,14 +140,14 @@ export class ClientsPeriodStatistics {
     description: `Count of clients with at least one deal up to period end.
       Client is a single payer wallet.`,
   })
-  totalClientsCount: DashboardServiceValue;
+  totalClientsCount: ServiceTypeValue;
 
   @ApiProperty({
     description: `Average count of datasets per client up to period end. Dataset
       is a unique pair of client and deal manifest hash. Null when there are no
       clients yet.`,
   })
-  averageDatasetsPerClient: DashboardServiceValue;
+  averageDatasetsPerClient: ServiceTypeValue;
 
   @ApiProperty({
     description: `Count of clients that had a deal before the period and created
@@ -155,35 +155,35 @@ export class ClientsPeriodStatistics {
       they already had. For "all" period, count of clients that created more
       than one deal.`,
   })
-  returningClientsCount: DashboardServiceValue;
+  returningClientsCount: ServiceTypeValue;
 
   @ApiProperty({
     description: `Count of clients with a positive Filecoin Pay account balance
       at period end`,
   })
-  fundedWalletsCount: DashboardServiceValue;
+  fundedWalletsCount: ServiceTypeValue;
 
   @ApiProperty({
     description: `Share of clients with a positive Filecoin Pay account balance
       at period end. Null when there are no clients yet.`,
   })
-  fundedWalletsPercentage: DashboardServiceValue;
+  fundedWalletsPercentage: ServiceTypeValue;
 }
 
 export class ClientsStatistics {
   @ApiProperty({
     description: 'Period of the statistics',
-    enum: dashboardPeriods,
-    enumName: 'DashboardPeriod',
+    enum: statisticsPeriods,
+    enumName: 'StatisticsPeriod',
   })
-  period: DashboardPeriod;
+  period: StatisticsPeriod;
 
   @ApiProperty({
     description: 'Service of the statistics',
-    enum: dashboardServices,
-    enumName: 'DashboardService',
+    enum: serviceTypes,
+    enumName: 'ServiceType',
   })
-  service: DashboardService;
+  service: ServiceType;
 
   @ApiProperty({
     description: 'Statistics for the requested period',
