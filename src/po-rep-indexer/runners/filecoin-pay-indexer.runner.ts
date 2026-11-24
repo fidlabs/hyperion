@@ -1,5 +1,5 @@
-import { groupBy } from 'lodash';
-import { type Prisma } from '../../generated/prisma/client';
+import { groupBy, uniq } from 'lodash';
+import { Prisma } from '../../generated/prisma/client';
 import {
   type AbiEvent,
   type Address,
@@ -27,6 +27,19 @@ type Log = GetLogsReturnType<
 >[number];
 type Logs = Log[];
 type RailLog = Extract<Log, { args: { railId: bigint } }>;
+
+interface RailAccounts {
+  token: string;
+  from: string;
+  to: string;
+  serviceFeeRecipient: string;
+}
+
+interface AccountFundsChange {
+  token: string;
+  owner: string;
+  amount: bigint;
+}
 
 const events = [
   getAbiItem({ abi: FilecoinPayV1ABI, name: 'DepositRecorded' }),
@@ -71,18 +84,25 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
 
   protected prepareCleanup(): Prisma.PrismaPromise<unknown>[] {
     return [
+      this.prismaService.filecoin_pay_account_state.deleteMany(),
       this.prismaService.filecoin_pay_account_transfer.deleteMany(),
       this.prismaService.filecoin_pay_payment.deleteMany(),
       this.prismaService.filecoin_pay_rail.deleteMany(),
     ];
   }
 
-  protected prepareUpdates(logs: Logs): Prisma.PrismaPromise<unknown>[] {
+  protected async prepareUpdates(
+    logs: Logs,
+  ): Promise<Prisma.PrismaPromise<unknown>[]> {
+    const accountsFundsUpdates = await this.prepareAccountsFundsUpdates(logs);
+
     return [
       ...this.prepareRailsCreations(logs),
       ...this.prepareRailUpdates(logs),
       ...this.preparePaymentsCreations(logs),
       ...this.prepareAccountsTransfersCreations(logs),
+      ...accountsFundsUpdates,
+      ...this.prepareAccountsLockupsUpdates(logs),
     ];
   }
 
@@ -227,6 +247,194 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
       this.prismaService.filecoin_pay_account_transfer.createMany({
         data: [...depositsCreations, ...withdrawalsCreations],
       }),
+    ];
+  }
+
+  private async prepareAccountsFundsUpdates(
+    logs: Logs,
+  ): Promise<Prisma.PrismaPromise<unknown>[]> {
+    const railsAccounts = await this.getRailsAccounts(logs);
+
+    const fundsChanges = logs.flatMap<AccountFundsChange>((log) => {
+      switch (log.eventName) {
+        case 'DepositRecorded':
+          return [
+            {
+              token: log.args.token,
+              owner: log.args.to,
+              amount: log.args.amount,
+            },
+          ];
+        case 'WithdrawRecorded':
+          return [
+            {
+              token: log.args.token,
+              owner: log.args.from,
+              amount: -log.args.amount,
+            },
+          ];
+        case 'RailSettled':
+          return this.paymentToFundsChanges(
+            railsAccounts.get(log.args.railId),
+            log.args.totalSettledAmount,
+            log.args.totalNetPayeeAmount,
+            log.args.operatorCommission,
+          );
+        case 'RailOneTimePaymentProcessed':
+          return this.paymentToFundsChanges(
+            railsAccounts.get(log.args.railId),
+            log.args.netPayeeAmount +
+              log.args.networkFee +
+              log.args.operatorCommission,
+            log.args.netPayeeAmount,
+            log.args.operatorCommission,
+          );
+        default:
+          return [];
+      }
+    });
+
+    const changesGroupedByAccount = groupBy(
+      fundsChanges.filter((change) => change.amount !== 0n),
+      (change) => `${change.owner}-${change.token}`,
+    );
+
+    return Object.values(changesGroupedByAccount).map((accountChanges) => {
+      const { token, owner } = accountChanges[0];
+      const fundsChange = accountChanges
+        .reduce((sum, change) => sum + change.amount, 0n)
+        .toString();
+
+      return this.prismaService.filecoin_pay_account_state.upsert({
+        where: {
+          owner_token: {
+            owner: owner,
+            token: token,
+          },
+        },
+        create: {
+          owner: owner,
+          token: token,
+          funds: fundsChange,
+        },
+        update: {
+          funds: {
+            increment: fundsChange,
+          },
+        },
+      });
+    });
+  }
+
+  private paymentToFundsChanges(
+    railAccounts: RailAccounts | undefined,
+    totalAmount: bigint,
+    netPayeeAmount: bigint,
+    operatorCommission: bigint,
+  ): AccountFundsChange[] {
+    if (!railAccounts) {
+      return [];
+    }
+
+    const { token, from, to, serviceFeeRecipient } = railAccounts;
+
+    return [
+      { token: token, owner: from, amount: -totalAmount },
+      { token: token, owner: to, amount: netPayeeAmount },
+      { token: token, owner: serviceFeeRecipient, amount: operatorCommission },
+    ];
+  }
+
+  private async getRailsAccounts(
+    logs: Logs,
+  ): Promise<Map<bigint, RailAccounts>> {
+    const railsAccounts = new Map<bigint, RailAccounts>();
+
+    logs.forEach((log) => {
+      if (log.eventName === 'RailCreated') {
+        railsAccounts.set(log.args.railId, {
+          token: log.args.token,
+          from: log.args.payer,
+          to: log.args.payee,
+          serviceFeeRecipient: log.args.serviceFeeRecipient,
+        });
+      }
+    });
+
+    const missingRailsIds = uniq(
+      logs.filter(isRailLog).map((log) => log.args.railId),
+    ).filter((railId) => !railsAccounts.has(railId));
+
+    if (missingRailsIds.length === 0) {
+      return railsAccounts;
+    }
+
+    const savedRails = await this.prismaService.filecoin_pay_rail.findMany({
+      where: {
+        railId: {
+          in: missingRailsIds,
+        },
+      },
+    });
+
+    savedRails.forEach((rail) => {
+      railsAccounts.set(rail.railId, rail);
+    });
+
+    return railsAccounts;
+  }
+
+  private prepareAccountsLockupsUpdates(
+    logs: Logs,
+  ): Prisma.PrismaPromise<unknown>[] {
+    const railsIds = uniq(logs.filter(isRailLog).map((log) => log.args.railId));
+
+    if (railsIds.length === 0) {
+      return [];
+    }
+
+    const lastBlock = logs[logs.length - 1].blockNumber;
+
+    return [
+      this.prismaService.$executeRaw`
+        INSERT INTO "filecoin_pay_account_state" (
+          "owner",
+          "token",
+          "lockupCurrent",
+          "lockupRate",
+          "lockupLastSettledAt"
+        )
+        SELECT
+          "from",
+          "token",
+          COALESCE(
+            SUM(
+              "lockupFixed" + "paymentRate" * (
+                CASE
+                  WHEN "endEpoch" = 0 THEN "lockupPeriod" + ${lastBlock}::bigint
+                  ELSE "endEpoch"
+                END - "settledUpTo"
+              )
+            ) FILTER (WHERE NOT "finalized"),
+            0
+          ),
+          COALESCE(
+            SUM("paymentRate") FILTER (WHERE NOT "finalized" AND "endEpoch" = 0),
+            0
+          ),
+          ${lastBlock}::bigint
+        FROM "filecoin_pay_rail"
+        WHERE ("from", "token") IN (
+          SELECT "from", "token"
+          FROM "filecoin_pay_rail"
+          WHERE "railId" IN (${Prisma.join(railsIds)})
+        )
+        GROUP BY "from", "token"
+        ON CONFLICT ("owner", "token") DO UPDATE SET
+          "lockupCurrent" = EXCLUDED."lockupCurrent",
+          "lockupRate" = EXCLUDED."lockupRate",
+          "lockupLastSettledAt" = EXCLUDED."lockupLastSettledAt"
+      `,
     ];
   }
 
