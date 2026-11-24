@@ -23,9 +23,11 @@ const cid = z.custom<string>((value) => {
 export const RECENT_NODE_CLIENT = 'PO_REP_RECENT_NODE_CLIENT';
 export const ARCHIVE_NODE_CLIENT = 'PO_REP_ARCHIVE_NODE_CLIENT';
 
-// Block in which PoRep v2 contracts were deployed. Nothing indexed by this
-// module exists before it, so every runner starts here.
+// Block in which PoRep v2 contracts were deployed
 export const PO_REP_ORIGIN_BLOCK = 6337724n;
+
+// Block in which FilecoinPayV1 contract was deployed
+export const FILECOIN_PAY_ORIGIN_BLOCK = 5421337n;
 
 export const PO_REP_SUPPORTED_CHAINS = [
   filecoin,
