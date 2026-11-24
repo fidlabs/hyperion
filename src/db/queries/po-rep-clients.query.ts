@@ -360,17 +360,19 @@ export interface CreatePoRepClientsStatisticsQueryParameters {
   periodEndEpoch: number;
 }
 
+function createPoRepClientsTokensQuery(qb: QueryBuilder) {
+  return qb
+    .selectFrom('po_rep_deal as d')
+    .innerJoin('filecoin_pay_rail as r', 'r.railId', 'd.railId')
+    .select(['d.client', 'r.token'])
+    .distinct();
+}
+
 export function createPoRepClientsFundsQuery(
   qb: QueryBuilder,
   { epoch }: CreatePoRepClientsFundsQueryParameters,
 ) {
   const clientsQuery = qb.selectFrom('po_rep_deal').select('client');
-
-  const clientsTokensCTE = qb
-    .selectFrom('po_rep_deal as d')
-    .innerJoin('filecoin_pay_rail as r', 'r.railId', 'd.railId')
-    .select(['d.client', 'r.token'])
-    .distinct();
 
   const paymentsQuery = qb
     .selectFrom('filecoin_pay_payment as p')
@@ -407,7 +409,7 @@ export function createPoRepClientsFundsQuery(
     );
 
   return qb
-    .with('ct', clientsTokensCTE)
+    .with('ct', createPoRepClientsTokensQuery(qb))
     .with('fc', fundsChangesCTE)
     .selectFrom('ct')
     .innerJoin('fc', (join) =>
@@ -427,50 +429,21 @@ export function createPoRepClientsListQuery(
   qb: QueryBuilder,
   { currentEpoch, lowBalanceEpoch }: CreatePoRepClientsListQueryParameters,
 ) {
-  const lockupsCTE = qb
-    .selectFrom('filecoin_pay_rail')
-    .select((eb) => [
-      'from as client',
-      'token',
-      eb.fn
-        .sum(
-          eb
-            .case()
-            .when('endEpoch', '=', '0')
-            .then(eb.ref('paymentRate'))
-            .else('0')
-            .end(),
-        )
-        .as('lockup_rate'),
-      eb.fn
-        .sum(
-          sql<string>`${eb.ref('lockupFixed')} + ${eb.ref('paymentRate')} * (${eb
-            .case()
-            .when('endEpoch', '=', '0')
-            .then(eb.ref('lockupPeriod'))
-            .else(eb.ref('endEpoch'))
-            .end()} - ${eb.ref('settledUpTo')})`,
-        )
-        .as('lockup_base'),
-    ])
-    .where('finalized', '=', false)
-    .groupBy(['from', 'token']);
-
   const accountsCTE = qb
-    .with('f', createPoRepClientsFundsQuery(qb, { epoch: currentEpoch }))
-    .with('l', lockupsCTE)
-    .selectFrom('f')
-    .leftJoin('l', (join) =>
-      join.onRef('l.client', '=', 'f.client').onRef('l.token', '=', 'f.token'),
+    .with('ct', createPoRepClientsTokensQuery(qb))
+    .selectFrom('ct')
+    .innerJoin('filecoin_pay_account_state as s', (join) =>
+      join.onRef('s.owner', '=', 'ct.client').onRef('s.token', '=', 'ct.token'),
     )
     .select((eb) => [
-      'f.client',
-      'f.funds',
-      eb.fn.coalesce('l.lockup_rate', sql.lit('0')).as('lockup_rate'),
-      eb.fn.coalesce('l.lockup_base', sql.lit('0')).as('lockup_base'),
+      'ct.client',
+      's.funds',
+      's.lockupCurrent',
+      's.lockupRate',
+      's.lockupLastSettledAt',
       sql<
         string | null
-      >`div(${eb.ref('f.funds')} - ${eb.ref('l.lockup_base')}, nullif(${eb.ref('l.lockup_rate')}, 0))`.as(
+      >`${eb.ref('s.lockupLastSettledAt')} + div(${eb.ref('s.funds')} - ${eb.ref('s.lockupCurrent')}, nullif(${eb.ref('s.lockupRate')}, 0))`.as(
         'funded_until_epoch',
       ),
     ]);
@@ -481,9 +454,9 @@ export function createPoRepClientsListQuery(
     .select((eb) => {
       const isSetUp = eb.or([
         eb('a.funds', '>', '0'),
-        eb('a.lockup_rate', '>', '0'),
+        eb('a.lockupRate', '>', '0'),
       ]);
-      const availableFunds = sql<string>`${eb.ref('a.funds')} - ${eb.ref('a.lockup_base')} - ${eb.ref('a.lockup_rate')} * least(${eb.ref('a.funded_until_epoch')}, ${currentEpoch})`;
+      const availableFunds = sql<string>`${eb.ref('a.funds')} - ${eb.ref('a.lockupCurrent')} - ${eb.ref('a.lockupRate')} * (least(${eb.ref('a.funded_until_epoch')}, ${currentEpoch}) - ${eb.ref('a.lockupLastSettledAt')})`;
 
       return [
         'a.client',

@@ -193,6 +193,17 @@ model filecoin_pay_payment {
   @@index([railId, createdAtBlock(sort: Desc)])
 }
 
+model filecoin_pay_account_state {
+  owner               String
+  token               String
+  funds               Decimal @default(0) @db.Decimal(78, 0)
+  lockupCurrent       Decimal @default(0) @db.Decimal(78, 0)
+  lockupRate          Decimal @default(0) @db.Decimal(78, 0)
+  lockupLastSettledAt BigInt  @default(0)
+
+  @@id([owner, token])
+}
+
 model filecoin_pay_account_transfer {
   id             String  @id @default(uuid()) @db.Uuid
   token          String
