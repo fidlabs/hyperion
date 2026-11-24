@@ -34,7 +34,6 @@ import {
   GetFilecoinPayRailsResponse,
   GetTransactionsCountResponse,
 } from './types.filecoin-pay';
-import { ConfigService } from '@nestjs/config';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 
 class BigIntTransform implements PipeTransform<string, bigint> {
@@ -54,7 +53,6 @@ export class FilecoinPayController extends ControllerBase {
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly prismaService: PrismaService,
     private readonly tokenInfoService: ERC20TokenInfoService,
-    private readonly configService: ConfigService,
     private readonly poRepService: PoRepService,
   ) {
     super();
@@ -349,8 +347,8 @@ export class FilecoinPayController extends ControllerBase {
       },
       previous: periods.previous
         ? {
-            periodStart: periods.previous?.start?.toJSDate() ?? null,
-            periodEnd: periods.previous?.end.toJSDate() ?? null,
+            periodStart: periods.previous.start?.toJSDate() ?? null,
+            periodEnd: periods.previous.end.toJSDate() ?? null,
             fcss: previousFcssCount,
             fwss: previousFwssCount,
             total: (previousFcssCount ?? 0) + (previousFwssCount ?? 0),

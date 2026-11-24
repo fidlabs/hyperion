@@ -344,7 +344,7 @@ export class PoRepController extends ControllerBase {
   public async getProviderEconomicsStatistics(
     @Param() query: GetProviderStatisticsRequest,
   ): Promise<GetProviderEconomicsStatisticsResponse> {
-    const stats = this.poRepService.getProviderEconomicsStatistics(
+    const stats = await this.poRepService.getProviderEconomicsStatistics(
       query.providerId,
     );
 
