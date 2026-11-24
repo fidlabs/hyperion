@@ -270,17 +270,32 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
           lockupFixed: 0,
           finalized: true,
         };
-      case 'RailOneTimePaymentProcessed':
+      case 'RailOneTimePaymentProcessed': {
+        const { lockupFixed } = previousUpdateInput;
+        const paymentAmount =
+          log.args.netPayeeAmount +
+          log.args.networkFee +
+          log.args.operatorCommission;
+
+        if (typeof lockupFixed === 'string') {
+          return {
+            ...previousUpdateInput,
+            lockupFixed: (BigInt(lockupFixed) - paymentAmount).toString(),
+          };
+        }
+
+        const previousDecrement =
+          typeof lockupFixed === 'object' && 'decrement' in lockupFixed
+            ? BigInt(lockupFixed.decrement?.toString() ?? 0)
+            : 0n;
+
         return {
           ...previousUpdateInput,
           lockupFixed: {
-            decrement: (
-              log.args.netPayeeAmount +
-              log.args.networkFee +
-              log.args.operatorCommission
-            ).toString(),
+            decrement: (previousDecrement + paymentAmount).toString(),
           },
         };
+      }
       default:
         return previousUpdateInput;
     }
