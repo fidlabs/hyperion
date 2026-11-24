@@ -31,7 +31,6 @@ import {
   StorageProvidersHistoryRequest,
   StorageProvidersPeriodStatistics,
   StorageProvidersSlaHistory,
-  StorageProvidersStatistics,
 } from './types.storage-providers';
 
 @Controller('storage-providers')
@@ -206,10 +205,7 @@ export class StorageProvidersController extends ControllerBase {
     start,
     end,
   }: DashboardPeriodBoundaries): Promise<StorageProvidersPeriodStatistics> {
-    const fcss = await this.poRepService.getProvidersStatistics(
-      start,
-      end,
-    );
+    const fcss = await this.poRepService.getProvidersStatistics(start, end);
 
     return {
       periodStart: start !== null ? start.toJSDate() : null,

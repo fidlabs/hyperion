@@ -2,7 +2,6 @@ import { ApiProperty, IntersectionType, PickType } from '@nestjs/swagger';
 import { PoRepHistoryParameters } from 'src/service/po-rep/types.po-rep';
 import {
   DashboardService,
-  dashboardServices,
   DashboardServiceSplitValue,
   DashboardServiceValue,
   DashboardStatisticsRequest,
