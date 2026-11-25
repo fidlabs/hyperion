@@ -563,17 +563,6 @@ export interface PoRepClientsRevenueConcentrationHistoryEntry {
 export type PoRepClientWalletStatus =
   'funded' | 'low_balance' | 'empty' | 'not_set_up';
 
-export interface PoRepClientsListEntry {
-  clientAddress: string;
-  datasetsCount: number;
-  walletStatus: PoRepClientWalletStatus;
-}
-
-export interface PoRepClientsList {
-  data: PoRepClientsListEntry[];
-  pagination: PaginationMetadata;
-}
-
 export interface PoRepProvidersEarningsAgainstSla {
   slaTarget: number;
   providers: {

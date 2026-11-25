@@ -8,7 +8,6 @@ import { PrismaService } from 'src/db/prisma.service';
 import {
   createPoRepClientDealsHistoryQuery,
   createPoRepClientsHistoryQuery,
-  createPoRepClientsListQuery,
   createPoRepClientSpendQuery,
   createPoRepClientsStatisticsQuery,
   createPoRepClientStatisticsQuery,
@@ -49,12 +48,10 @@ import { UrlFinderDealMeasurement } from '../url-finder/types.url-finder';
 import { UrlFinderService } from '../url-finder/url-finder.service';
 import {
   DealRailState,
-  PaginationParameters,
   PoRepClient,
   PoRepClientDealsHistoryEntry,
   PoRepClientDealsSla,
   PoRepClientsHistoryEntry,
-  PoRepClientsList,
   PoRepClientsRevenueConcentrationHistoryEntry,
   PoRepClientsStatistics,
   PoRepClientSlaHistoryEntry,
@@ -117,7 +114,6 @@ interface DealsComplianceWindow {
 
 const Decimal = PrismaRuntime.Decimal;
 const topClientsCount = 10;
-const walletLowBalanceDays = 30;
 
 @Injectable()
 export class PoRepService {
@@ -710,54 +706,6 @@ export class PoRepService {
     });
 
     return this.filterHistoryFromPeriodStart(history, periodStart, windowSize);
-  }
-
-  public async getClients({
-    limit = 0,
-    page = 1,
-  }: PaginationParameters): Promise<PoRepClientsList> {
-    const now = DateTime.utc();
-    const baseQuery = createPoRepClientsListQuery(this.queryBuilder, {
-      currentEpoch: dateToFilecoinBlockHeight(now.toJSDate(), {
-        testnet: this.isTestnet(),
-      }),
-      lowBalanceEpoch: dateToFilecoinBlockHeight(
-        now.plus({ days: walletLowBalanceDays }).toJSDate(),
-        { testnet: this.isTestnet() },
-      ),
-    });
-    let resultsQuery = baseQuery
-      .orderBy('datasets_count', 'desc')
-      .orderBy('client_address', 'asc');
-
-    if (limit) {
-      resultsQuery = resultsQuery.limit(limit).offset((page - 1) * limit);
-    }
-
-    const [results, countResult] = await Promise.all([
-      resultsQuery.execute(),
-      this.queryBuilder
-        .selectFrom('po_rep_deal')
-        .select((eb) => [eb.fn.count('client').distinct().as('count')])
-        .executeTakeFirstOrThrow(),
-    ]);
-
-    const totalCount = stringToNumber(countResult.count.toString()) ?? 0;
-
-    return {
-      data: results.map((result) => {
-        return {
-          clientAddress: result.client_address,
-          datasetsCount: stringToNumber(result.datasets_count.toString()),
-          walletStatus: result.wallet_status,
-        };
-      }),
-      pagination: {
-        page: page,
-        pagesCount: limit ? Math.ceil(totalCount / limit) : 1,
-        totalCount: totalCount,
-      },
-    };
   }
 
   public async getDealsPaymentsSummaryHistory({

@@ -20,6 +20,7 @@ import { RequestLoggerMiddleware } from './middleware/request-logger.middleware'
 import { PoRepIndexerModule } from './po-rep-indexer';
 import { PrometheusMetricModule } from './prometheus';
 import { CidContactService } from './service/cid-contact/cid-contact.service';
+import { ClientsService } from './service/clients/clients.service';
 import { ERC20TokenInfoService } from './service/erc20-token-info/erc20-token-info.service';
 import { EthApiService } from './service/eth-api/eth-api.service';
 import { LotusApiService } from './service/lotus-api/lotus-api.service';
@@ -53,6 +54,7 @@ import { IPNIController } from 'src/controller/ipni/ipni.controller';
     IpniReportingDailyRunnerService,
     PrismaService,
     CidContactService,
+    ClientsService,
     ERC20TokenInfoService,
     EthApiService,
     LotusApiService,
