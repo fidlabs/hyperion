@@ -5,7 +5,7 @@ import {
   OnApplicationShutdown,
   Provider,
 } from '@nestjs/common';
-import { Kysely, KyselyConfig, PostgresDialect } from 'kysely';
+import { Kysely, KyselyConfig, PostgresDialect, Transaction } from 'kysely';
 import { DB } from './auto-generated/types';
 import { PostgresService } from './postgres.service';
 
@@ -64,3 +64,5 @@ export function InjectQueryBuilder() {
 }
 
 export type QueryBuilder = Kysely<DB>;
+
+export type TransactionContext = Transaction<DB>;

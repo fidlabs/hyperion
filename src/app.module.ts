@@ -12,7 +12,7 @@ import { ClientsController } from './controller/clients/clients.controller';
 import { FilecoinPayController } from './controller/filecoin-pay/filecoin-pay.controller';
 import { PoRepController } from './controller/po-rep/po-rep.controller';
 import { StorageProvidersController } from './controller/storage-providers/storage-providers.controller';
-import { PostgresService } from './db/postgres.service';
+import { DbModule } from './db/db.module';
 import { PrismaService } from './db/prisma.service';
 import { IpniAdvertisementFetcherJobService } from './jobs/ipni-advertisement-fetcher-job/ipni-advertisement-fetcher-job.service';
 import { ErrorHandlerMiddleware } from './middleware/error-handler.middleware';
@@ -26,7 +26,6 @@ import { LotusApiService } from './service/lotus-api/lotus-api.service';
 import { PoRepPriceOracleService } from './service/po-rep-price-oracle/po-rep-price-oracle.service';
 import { PoRepService } from './service/po-rep/po-rep.service';
 import { UrlFinderService } from './service/url-finder/url-finder.service';
-import { queryBuilderProviders } from './db';
 import { IpniReportingDailyRunnerService } from 'src/jobs/ipni-reporting-daily-runner/ipni-reporting-daily-runner.service';
 import { IPNIController } from 'src/controller/ipni/ipni.controller';
 
@@ -38,6 +37,7 @@ import { IPNIController } from 'src/controller/ipni/ipni.controller';
     CacheModule.register({ ttl: 1000 * 60, max: 100000 }), // 1 minute
     TerminusModule.forRoot(),
     PrometheusMetricModule,
+    DbModule,
     PoRepIndexerModule,
   ],
   controllers: [
@@ -56,7 +56,6 @@ import { IPNIController } from 'src/controller/ipni/ipni.controller';
     ERC20TokenInfoService,
     EthApiService,
     LotusApiService,
-    PostgresService,
     PoRepPriceOracleService,
     PoRepService,
     UrlFinderService,
@@ -70,7 +69,6 @@ import { IPNIController } from 'src/controller/ipni/ipni.controller';
         return axiosInstance;
       },
     },
-    ...queryBuilderProviders,
   ],
 })
 export class AppModule implements NestModule {

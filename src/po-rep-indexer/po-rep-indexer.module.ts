@@ -1,6 +1,7 @@
 import { FactoryProvider, Module, OnModuleInit } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DiscoveryModule, DiscoveryService } from '@nestjs/core';
+import { DbModule } from '../db/db.module';
 import { PrismaService } from '../db/prisma.service';
 import { DealManifestService } from './deal-manifest.service';
 import {
@@ -49,6 +50,7 @@ const archiveNodeClient: FactoryProvider<PoRepPublicClient> = {
       validate: validatePoRepConfig,
     }),
     DiscoveryModule,
+    DbModule,
   ],
   providers: [
     PrismaService,
