@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNumberString } from 'class-validator';
 import { IsIn, IsOptional } from 'class-validator';
 
@@ -99,15 +99,7 @@ export class StatisticsRequest {
   service?: ServiceType;
 }
 
-export class ServiceTypeValue {
-  @ApiProperty({
-    description: `Value for all requested services. Services that are not
-      implemented yet are not included.`,
-    type: Number,
-    nullable: true,
-  })
-  total: number | null;
-
+export class ServiceTypeSplitValue {
   @ApiProperty({
     description: 'Value for FCSS, null if not requested or unavailable',
     type: Number,
@@ -124,6 +116,12 @@ export class ServiceTypeValue {
   fwss: number | null;
 }
 
-export class ServiceTypeSplitValue extends OmitType(ServiceTypeValue, [
-  'total',
-]) {}
+export class ServiceTypeValue extends ServiceTypeSplitValue {
+  @ApiProperty({
+    description: `Value for all requested services. Services that are not
+      implemented yet are not included.`,
+    type: Number,
+    nullable: true,
+  })
+  total: number | null;
+}

@@ -1,5 +1,14 @@
 import { Cache, CACHE_MANAGER, CacheTTL } from '@nestjs/cache-manager';
 import { dateToFilecoinBlockHeight } from 'src/utils/utils';
+import { PoRepService } from 'src/service/po-rep/po-rep.service';
+import { uniq } from 'lodash';
+import { PrismaService } from 'src/db/prisma.service';
+import { ERC20TokenInfoService } from 'src/service/erc20-token-info/erc20-token-info.service';
+import { ControllerBase } from '../base/controller-base';
+import {
+  PaginationInfoRequest,
+  StatisticsRequest,
+} from '../base/types.controller-base';
 
 import {
   BadRequestException,
@@ -12,21 +21,14 @@ import {
   PipeTransform,
   Query,
 } from '@nestjs/common';
+
 import {
   ApiBadRequestResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
 } from '@nestjs/swagger';
-import { uniq } from 'lodash';
-import { PrismaService } from 'src/db/prisma.service';
-import { ERC20TokenInfoService } from 'src/service/erc20-token-info/erc20-token-info.service';
-import { ControllerBase } from '../base/controller-base';
-import {
-  DashboardStatisticsRequest,
-  DashboardStatisticsResponse,
-  PaginationInfoRequest,
-} from '../base/types.controller-base';
+
 import {
   FilecoinPayPayment,
   GetFilecoinPayRailResponse,
@@ -34,7 +36,6 @@ import {
   GetFilecoinPayRailsResponse,
   GetTransactionsCountResponse,
 } from './types.filecoin-pay';
-import { PoRepService } from 'src/service/po-rep/po-rep.service';
 
 class BigIntTransform implements PipeTransform<string, bigint> {
   transform(value: string): bigint {
@@ -277,12 +278,12 @@ export class FilecoinPayController extends ControllerBase {
     summary: 'Get number of Filecoin Pay payment transactions',
   })
   @ApiOkResponse({
-    type: DashboardStatisticsResponse<GetTransactionsCountResponse>,
+    type: GetTransactionsCountResponse,
   })
   @CacheTTL(1000 * 60 * 5)
   public async getTransactionsCount(
-    @Query() { period = '30d', service = 'all' }: DashboardStatisticsRequest,
-  ): Promise<DashboardStatisticsResponse<GetTransactionsCountResponse>> {
+    @Query() { period = '30d', service = 'all' }: StatisticsRequest,
+  ): Promise<GetTransactionsCountResponse> {
     if (service === 'fwss') {
       throw new NotImplementedException(
         'Statistics for FWSS are not implemented yet',
@@ -290,7 +291,7 @@ export class FilecoinPayController extends ControllerBase {
     }
 
     const isTestnet = this.poRepService.isTestnet();
-    const periods = this.getDashboardPeriods(period);
+    const periods = this.getStatisticsPeriods(period);
 
     const currentFcssCount =
       await this.prismaService.filecoin_pay_payment.count({

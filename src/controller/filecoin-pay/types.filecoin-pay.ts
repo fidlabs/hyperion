@@ -1,9 +1,13 @@
-import { ApiProperty, IntersectionType } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
-  DashboardServiceValue,
-  DashboardStatisticsResponsePeriod,
   PaginationInfoResponse,
+  ServiceType,
+  serviceTypes,
+  ServiceTypeValue,
+  StatisticsPeriod,
+  statisticsPeriods,
 } from '../base/types.controller-base';
+import { ClientsPeriodStatistics } from 'src/controller/clients/types.clients';
 
 class ERC20TokenInfo {
   @ApiProperty({
@@ -167,7 +171,45 @@ export class GetFilecoinPayRailPaymentsResponse extends PaginationInfoResponse {
   data: FilecoinPayPayment[];
 }
 
-export class GetTransactionsCountResponse extends IntersectionType(
-  DashboardServiceValue,
-  DashboardStatisticsResponsePeriod,
-) {}
+export class TransactionsCountStatistics extends ServiceTypeValue {
+  @ApiProperty({
+    description: 'ISO Datetime of the period start, null for "all" period',
+    type: Date,
+    nullable: true,
+  })
+  periodStart: Date | null;
+
+  @ApiProperty({
+    description: 'ISO Datetime of the period end',
+  })
+  periodEnd: Date;
+}
+
+export class GetTransactionsCountResponse {
+  @ApiProperty({
+    description: 'Period of the statistics',
+    enum: statisticsPeriods,
+    enumName: 'StatisticsPeriod',
+  })
+  period: StatisticsPeriod;
+
+  @ApiProperty({
+    description: 'Service of the statistics',
+    enum: serviceTypes,
+    enumName: 'ServiceType',
+  })
+  service: ServiceType;
+
+  @ApiProperty({
+    description: 'Statistics for the requested period',
+  })
+  current: TransactionsCountStatistics;
+
+  @ApiProperty({
+    description:
+      'Statistics for the previous period of the same length, null for "all" period',
+    type: ClientsPeriodStatistics,
+    nullable: true,
+  })
+  previous: TransactionsCountStatistics | null;
+}
