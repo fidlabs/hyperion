@@ -121,7 +121,7 @@ export class ClientsController extends ControllerBase {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getClientsHistory(
-      this.getStatisticsPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.start,
       windowSize,
     );
 
@@ -155,7 +155,7 @@ export class ClientsController extends ControllerBase {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getReturningClientsHistory(
-      this.getStatisticsPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.start,
       'month',
     );
 
@@ -198,7 +198,7 @@ export class ClientsController extends ControllerBase {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getClientsRevenueConcentrationHistory(
-      this.getStatisticsPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.start,
       windowSize,
     );
 
@@ -211,17 +211,14 @@ export class ClientsController extends ControllerBase {
   }
 
   private async getPeriodStatistics({
-    periodStart,
-    periodEnd,
+    start,
+    end,
   }: StatisticsPeriodBoundaries): Promise<ClientsPeriodStatistics> {
-    const fcss = await this.poRepService.getClientsStatistics(
-      periodStart,
-      periodEnd,
-    );
+    const fcss = await this.poRepService.getClientsStatistics(start, end);
 
     return {
-      periodStart: periodStart !== null ? periodStart.toJSDate() : null,
-      periodEnd: periodEnd.toJSDate(),
+      periodStart: start !== null ? start.toJSDate() : null,
+      periodEnd: end.toJSDate(),
       totalClientsCount: this.fcssOnly(fcss.totalClientsCount),
       averageDatasetsPerClient: this.fcssOnly(fcss.averageDatasetsPerClient),
       returningClientsCount: this.fcssOnly(fcss.returningClientsCount),

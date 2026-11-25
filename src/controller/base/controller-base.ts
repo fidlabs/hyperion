@@ -22,8 +22,8 @@ const statisticsPeriodDurations: Record<StatisticsPeriod, DurationLike | null> =
   };
 
 export interface StatisticsPeriodBoundaries {
-  periodStart: DateTime | null;
-  periodEnd: DateTime;
+  start: DateTime | null;
+  end: DateTime;
 }
 
 export class ControllerBase {
@@ -36,7 +36,7 @@ export class ControllerBase {
 
     if (periodDuration === null) {
       return {
-        current: { periodStart: null, periodEnd: periodEnd },
+        current: { start: null, end: periodEnd },
         previous: null,
       };
     }
@@ -44,10 +44,10 @@ export class ControllerBase {
     const periodStart = periodEnd.minus(periodDuration);
 
     return {
-      current: { periodStart: periodStart, periodEnd: periodEnd },
+      current: { start: periodStart, end: periodEnd },
       previous: {
-        periodStart: periodStart.minus(periodDuration),
-        periodEnd: periodStart,
+        start: periodStart.minus(periodDuration),
+        end: periodStart,
       },
     };
   }
