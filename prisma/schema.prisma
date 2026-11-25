@@ -177,7 +177,7 @@ model filecoin_pay_rail {
 }
 
 model filecoin_pay_payment {
-  id                 String  @id @default(uuid()) @db.Uuid
+  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   // No foreign key constraints (relations) on rail id because we don't index 
   // from genesis block. Some registered payments may relate to rails for
   // which no entry exists in "filecoin_pay_rail" table because creation event
@@ -205,7 +205,7 @@ model filecoin_pay_account_state {
 }
 
 model filecoin_pay_account_transfer {
-  id             String  @id @default(uuid()) @db.Uuid
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   token          String
   owner          String
   amount         Decimal @db.Decimal(78, 0)

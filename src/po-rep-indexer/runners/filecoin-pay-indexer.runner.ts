@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import { type InsertObject, type Updateable } from 'kysely';
 import { chunk, groupBy, last, uniq } from 'lodash';
 import { type DB, type TransactionContext } from 'src/db';
@@ -187,13 +186,12 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
   ): Promise<void> {
     const oneTimePayments = logs
       .filter((log) => log.eventName === 'RailOneTimePaymentProcessed')
-      .map<PaymentInput>((log) => {
+      .map<Omit<PaymentInput, 'id'>>((log) => {
         const { railId, netPayeeAmount, networkFee, operatorCommission } =
           log.args;
         const totalAmount = netPayeeAmount + networkFee + operatorCommission;
 
         return {
-          id: randomUUID(),
           railId: railId.toString(),
           totalAmount: totalAmount.toString(),
           netPayeeAmount: netPayeeAmount.toString(),
@@ -206,7 +204,7 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
 
     const settlements = logs
       .filter((log) => log.eventName === 'RailSettled')
-      .map<PaymentInput>((log) => {
+      .map<Omit<PaymentInput, 'id'>>((log) => {
         const {
           railId,
           totalSettledAmount,
@@ -216,7 +214,6 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
         } = log.args;
 
         return {
-          id: randomUUID(),
           railId: railId.toString(),
           totalAmount: totalSettledAmount.toString(),
           netPayeeAmount: totalNetPayeeAmount.toString(),
@@ -228,7 +225,10 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
       });
 
     for (const part of chunk([...oneTimePayments, ...settlements], 1000)) {
-      await tx.insertInto('filecoin_pay_payment').values(part).execute();
+      await tx
+        .insertInto('filecoin_pay_payment')
+        .values(part as PaymentInput[])
+        .execute();
     }
   }
 
@@ -238,9 +238,8 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
   ): Promise<void> {
     const deposits = logs
       .filter((log) => log.eventName === 'DepositRecorded')
-      .map<AccountTransferInput>((log) => {
+      .map<Omit<AccountTransferInput, 'id'>>((log) => {
         return {
-          id: randomUUID(),
           token: log.args.token,
           owner: log.args.to,
           amount: log.args.amount.toString(),
@@ -250,9 +249,8 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
 
     const withdrawals = logs
       .filter((log) => log.eventName === 'WithdrawRecorded')
-      .map<AccountTransferInput>((log) => {
+      .map<Omit<AccountTransferInput, 'id'>>((log) => {
         return {
-          id: randomUUID(),
           token: log.args.token,
           owner: log.args.from,
           amount: (-log.args.amount).toString(),
@@ -263,7 +261,7 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
     for (const part of chunk([...deposits, ...withdrawals], 1000)) {
       await tx
         .insertInto('filecoin_pay_account_transfer')
-        .values(part)
+        .values(part as AccountTransferInput[])
         .execute();
     }
   }
