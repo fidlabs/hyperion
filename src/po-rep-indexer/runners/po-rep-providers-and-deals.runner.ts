@@ -1,16 +1,15 @@
-import { groupBy, last, uniqBy } from 'lodash';
-import {
-  PoRepDealState,
-  PoRepDealType,
-  Prisma,
-} from '../../generated/prisma/client';
-import { mergeBigIntFieldUpdate } from 'src/utils/prisma';
+import { type InsertObject, type Updateable, type UpdateResult } from 'kysely';
+import { chunk, groupBy, last, uniqBy } from 'lodash';
+import { type DB, type TransactionContext } from 'src/db';
+import { PoRepDealState, PoRepDealType } from 'src/db/auto-generated/enums';
 import {
   type AbiEvent,
   type Address,
   getAbiItem,
   type GetLogsReturnType,
   isAddressEqual,
+  type ReadContractReturnType,
+  zeroAddress,
 } from 'viem';
 import PoRepMarketABI from '../abis/po-rep-market.abi';
 import SPRegistryABI from '../abis/sp-registry.abi';
@@ -42,18 +41,32 @@ const dealTypeByContractValue: Record<number, PoRepDealType> = {
 
 type EventType = (typeof events)[number];
 type TerminatedDealsStates = Map<string, PoRepDealState>;
-type ProviderCreationInput = Prisma.po_rep_storage_providerCreateManyInput;
-type ProviderUpdateInput = Prisma.po_rep_storage_providerUpdateInput;
-type OfferCreationInput = Prisma.po_rep_offerCreateManyInput;
-type OfferPaymentCreationInput = Prisma.po_rep_offer_paymentCreateManyInput;
-type OfferUpdateInput = Prisma.po_rep_offerUpdateInput;
-type DealCreationInput = Prisma.po_rep_dealCreateManyInput;
-type DealRequirementsCreationInput =
-  Prisma.po_rep_deal_requirementsCreateManyInput;
-type DealTermsCreationInput = Prisma.po_rep_deal_termsCreateManyInput;
-type DealUpdateInput = Prisma.po_rep_dealUpdateInput;
-type DealStateChangeCreationInput =
-  Prisma.po_rep_deal_state_changeCreateManyInput;
+type ProviderInput = InsertObject<DB, 'po_rep_storage_provider'>;
+type OfferInput = InsertObject<DB, 'po_rep_offer'>;
+type OfferPaymentInput = InsertObject<DB, 'po_rep_offer_payment'>;
+type DealInput = InsertObject<DB, 'po_rep_deal'>;
+type DealRequirementsInput = InsertObject<DB, 'po_rep_deal_requirements'>;
+type DealTermsInput = InsertObject<DB, 'po_rep_deal_terms'>;
+type DealUpdate = Updateable<DB['po_rep_deal']>;
+type DealStateChangeInput = InsertObject<DB, 'po_rep_deal_state_change'>;
+type DealPieceInput = InsertObject<DB, 'po_rep_deal_pieces'>;
+
+type OfferView = ReadContractReturnType<
+  typeof SPRegistryABI,
+  'getOfferView',
+  [bigint]
+>;
+type Deal = ReadContractReturnType<typeof PoRepMarketABI, 'getDeal', [bigint]>;
+type DealTerms = ReadContractReturnType<
+  typeof PoRepMarketABI,
+  'getDealTerms',
+  [bigint]
+>;
+type DealPayment = ReadContractReturnType<
+  typeof PoRepMarketABI,
+  'getDealPayment',
+  [bigint]
+>;
 
 type SPRegistryLog = GetLogsReturnType<
   undefined,
@@ -76,6 +89,35 @@ type ProviderScopedLog = Extract<
   SPRegistryLog,
   { eventName: (typeof providerScopedEventNames)[number] }
 >;
+
+type OfferCreatedLog = Extract<SPRegistryLog, { eventName: 'OfferCreated' }>;
+type DealCreatedLog = Extract<PoRepMarketLog, { eventName: 'DealCreated' }>;
+
+interface CreatedOffer {
+  log: OfferCreatedLog;
+  offerView: OfferView;
+}
+
+interface CreatedDeal {
+  log: DealCreatedLog;
+  deal: Deal;
+  terms: DealTerms;
+  payment: DealPayment;
+}
+
+interface ProviderUpdate {
+  values: Updateable<DB['po_rep_storage_provider']>;
+  committedBytesChange: bigint;
+  pendingBytesChange: bigint;
+}
+
+interface Changes {
+  logs: Logs;
+  createdOffers: CreatedOffer[];
+  createdDeals: CreatedDeal[];
+  terminatedDealsStates: TerminatedDealsStates;
+  manifestResults: DealManifestSuccessResult[];
+}
 
 const spRegistryEvents = [
   getAbiItem({ abi: SPRegistryABI, name: 'ProviderRegistered' }),
@@ -123,7 +165,16 @@ const providerScopedEventNames = [
   'PayeeUpdated',
 ] as const satisfies SPRegistryLog['eventName'][];
 
-export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRunner<EventType> {
+function assertRowUpdated(result: UpdateResult, message: string) {
+  if (result.numUpdatedRows === 0n) {
+    throw new Error(message);
+  }
+}
+
+export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRunner<
+  EventType,
+  Changes
+> {
   public getName(): string {
     return PoRepProvidersAndDealsIndexerRunner.name;
   }
@@ -151,45 +202,58 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
     ] satisfies Address[];
   }
 
-  protected prepareCleanup(): Prisma.PrismaPromise<unknown>[] {
-    return [
-      this.prismaService.po_rep_deal_requirements.deleteMany(),
-      this.prismaService.po_rep_deal_terms.deleteMany(),
-      this.prismaService.po_rep_deal_state_change.deleteMany(),
-      this.prismaService.po_rep_deal_pieces.deleteMany(),
-      this.prismaService.po_rep_deal.deleteMany(),
-      this.prismaService.po_rep_offer_payment.deleteMany(),
-      this.prismaService.po_rep_offer.deleteMany(),
-      this.prismaService.po_rep_storage_provider.deleteMany(),
-    ];
+  protected async cleanup(tx: TransactionContext): Promise<void> {
+    await tx.deleteFrom('po_rep_deal_requirements').execute();
+    await tx.deleteFrom('po_rep_deal_terms').execute();
+    await tx.deleteFrom('po_rep_deal_state_change').execute();
+    await tx.deleteFrom('po_rep_deal_pieces').execute();
+    await tx.deleteFrom('po_rep_deal').execute();
+    await tx.deleteFrom('po_rep_offer_payment').execute();
+    await tx.deleteFrom('po_rep_offer').execute();
+    await tx.deleteFrom('po_rep_storage_provider').execute();
   }
 
-  protected async prepareUpdates(
-    logs: Logs,
-  ): Promise<Prisma.PrismaPromise<unknown>[]> {
+  protected async getChanges(logs: Logs): Promise<Changes> {
     const [
-      dealsCreations,
-      offersCreations,
+      createdDeals,
+      createdOffers,
       terminatedDealsStates,
       manifestResults,
     ] = await Promise.all([
-      this.prepareDealsCreations(logs),
-      this.prepareOffersCreations(logs),
+      this.resolveCreatedDeals(logs),
+      this.resolveCreatedOffers(logs),
       this.resolveTerminatedDealsStates(logs),
       this.resolveDealsManifests(logs),
     ]);
 
-    return [
-      ...this.prepareDealManifestCacheCreations(manifestResults),
-      ...this.prepareProvidersCreations(logs),
-      ...this.prepareProvidersUpdates(logs),
-      ...offersCreations,
-      ...this.prepareOffersUpdates(logs),
-      ...dealsCreations,
-      ...this.prepareDealPiecesCreations(manifestResults),
-      ...this.prepareDealsUpdates(logs, terminatedDealsStates),
-      ...this.prepareDealStateChangeCreations(logs, terminatedDealsStates),
-    ];
+    return {
+      logs: logs,
+      createdOffers: createdOffers,
+      createdDeals: createdDeals,
+      terminatedDealsStates: terminatedDealsStates,
+      manifestResults: manifestResults,
+    };
+  }
+
+  protected async updateDb(
+    tx: TransactionContext,
+    {
+      logs,
+      createdOffers,
+      createdDeals,
+      terminatedDealsStates,
+      manifestResults,
+    }: Changes,
+  ): Promise<void> {
+    await this.createDealManifestsCache(tx, manifestResults);
+    await this.createProviders(tx, logs);
+    await this.updateProviders(tx, logs);
+    await this.createOffers(tx, createdOffers);
+    await this.updateOffers(tx, logs);
+    await this.createDeals(tx, createdDeals);
+    await this.createDealsPieces(tx, manifestResults);
+    await this.updateDeals(tx, logs, terminatedDealsStates);
+    await this.createDealsStateChanges(tx, logs, terminatedDealsStates);
   }
 
   private async resolveDealsManifests(
@@ -227,59 +291,58 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
     );
   }
 
-  private prepareDealManifestCacheCreations(
+  private async createDealManifestsCache(
+    tx: TransactionContext,
     results: DealManifestSuccessResult[],
-  ): Prisma.PrismaPromise<unknown>[] {
+  ): Promise<void> {
     const uncachedResults = results.filter((result) => !result.data.cached);
 
-    if (uncachedResults.length === 0) {
-      return [];
+    for (const part of chunk(uncachedResults, 1000)) {
+      await tx
+        .insertInto('po_rep_deal_manifest_cache')
+        .values(
+          part.map((result) => ({
+            deal_id: result.dealId.toString(),
+            manifest_location: result.manifestLocation,
+            manifest_content: JSON.stringify(result.data.manifestContent),
+          })),
+        )
+        .onConflict((oc) => oc.doNothing())
+        .execute();
     }
-
-    return [
-      this.prismaService.po_rep_deal_manifest_cache.createMany({
-        data: uncachedResults.map((result) => ({
-          deal_id: result.dealId,
-          manifest_location: result.manifestLocation,
-          manifest_content: result.data.manifestContent,
-        })),
-        skipDuplicates: true,
-      }),
-    ];
   }
 
-  private prepareDealPiecesCreations(
+  private async createDealsPieces(
+    tx: TransactionContext,
     results: DealManifestResult[],
-  ): Prisma.PrismaPromise<unknown>[] {
-    if (results.length === 0) {
-      return [];
-    }
-
-    const createInputs = results.flatMap((result) => {
+  ): Promise<void> {
+    const dealsPieces = results.flatMap<DealPieceInput>((result) => {
       const pieces = this.dealManifestService.extractDealManifestPieces(
         result.data.manifestContent,
       );
 
       return pieces.map((piece) => {
         return {
-          deal_id: result.dealId,
+          deal_id: result.dealId.toString(),
           piece_cid: piece.pieceCid,
-        } satisfies Prisma.po_rep_deal_piecesCreateManyInput;
+        };
       });
     });
 
-    return [
-      this.prismaService.po_rep_deal_pieces.createMany({
-        data: createInputs,
-        skipDuplicates: true,
-      }),
-    ];
+    for (const part of chunk(dealsPieces, 1000)) {
+      await tx
+        .insertInto('po_rep_deal_pieces')
+        .values(part)
+        .onConflict((oc) => oc.doNothing())
+        .execute();
+    }
   }
 
-  private prepareProvidersCreations(
+  private async createProviders(
+    tx: TransactionContext,
     logs: Logs,
-  ): Prisma.PrismaPromise<unknown>[] {
-    const registerLogs = logs
+  ): Promise<void> {
+    const providers = logs
       .filter((log) => {
         return isAddressEqual(
           log.address,
@@ -288,26 +351,33 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
       })
       .filter((log) => {
         return log.eventName === 'ProviderRegistered';
+      })
+      .map<ProviderInput>((log) => {
+        return {
+          providerId: log.args.provider.toString(),
+          organization: log.args.organization,
+          payee: zeroAddress,
+          paused: false,
+          blocked: false,
+          availableBytes: '0',
+          committedBytes: '0',
+          pendingBytes: '0',
+          pricePerSectorPerMonth: '0',
+          minDealDurationDays: 0,
+          maxDealDurationDays: 0,
+          registeredAtBlock: log.blockNumber.toString(),
+        };
       });
 
-    if (registerLogs.length === 0) {
-      return [];
+    for (const part of chunk(providers, 1000)) {
+      await tx.insertInto('po_rep_storage_provider').values(part).execute();
     }
-
-    return [
-      this.prismaService.po_rep_storage_provider.createMany({
-        data: registerLogs.map<ProviderCreationInput>((log) => {
-          return {
-            providerId: log.args.provider,
-            organization: log.args.organization,
-            registeredAtBlock: log.blockNumber,
-          };
-        }),
-      }),
-    ];
   }
 
-  private prepareProvidersUpdates(logs: Logs): Prisma.PrismaPromise<unknown>[] {
+  private async updateProviders(
+    tx: TransactionContext,
+    logs: Logs,
+  ): Promise<void> {
     const registryLogs = logs.filter((log): log is ProviderScopedLog => {
       return (
         isAddressEqual(
@@ -318,29 +388,39 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
       );
     });
 
-    if (registryLogs.length === 0) {
-      return [];
-    }
-
     const logsGroupedByProvider = groupBy(registryLogs, (log) => {
       return log.args.provider.toString();
     });
 
-    return Object.entries(logsGroupedByProvider).map(
-      ([providerId, logsForProvider]) => {
-        return this.prismaService.po_rep_storage_provider.update({
-          data: logsForProvider.reduce(this.logToProviderUpdateInput, {}),
-          where: {
-            providerId: BigInt(providerId),
-          },
+    for (const [providerId, logsForProvider] of Object.entries(
+      logsGroupedByProvider,
+    )) {
+      const { values, committedBytesChange, pendingBytesChange } =
+        logsForProvider.reduce<ProviderUpdate>(this.logToProviderUpdate, {
+          values: {},
+          committedBytesChange: 0n,
+          pendingBytesChange: 0n,
         });
-      },
-    );
+
+      const result = await tx
+        .updateTable('po_rep_storage_provider')
+        .set((eb) => ({
+          ...values,
+          committedBytes: eb(
+            'committedBytes',
+            '+',
+            committedBytesChange.toString(),
+          ),
+          pendingBytes: eb('pendingBytes', '+', pendingBytesChange.toString()),
+        }))
+        .where('providerId', '=', providerId)
+        .executeTakeFirst();
+
+      assertRowUpdated(result, `Provider "${providerId}" not found`);
+    }
   }
 
-  private async prepareOffersCreations(
-    logs: Logs,
-  ): Promise<Prisma.PrismaPromise<unknown>[]> {
+  private async resolveCreatedOffers(logs: Logs): Promise<CreatedOffer[]> {
     const offerCreatedLogs = logs
       .filter((log) => {
         return isAddressEqual(
@@ -352,58 +432,68 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
         return log.eventName === 'OfferCreated';
       });
 
-    if (offerCreatedLogs.length === 0) {
-      return [];
-    }
-
-    const offerViews = await Promise.all(
-      offerCreatedLogs.map((log) => {
-        return this.recentNodeClient.readContract({
+    return Promise.all(
+      offerCreatedLogs.map(async (log) => {
+        const offerView = await this.recentNodeClient.readContract({
           address: this.configService.get('SP_REGISTRY_CONTRACT_ADDRESS'),
           abi: SPRegistryABI,
           functionName: 'getOfferView',
           args: [log.args.offerId],
         });
+
+        return { log: log, offerView: offerView };
       }),
     );
-
-    return [
-      this.prismaService.po_rep_offer.createMany({
-        data: offerCreatedLogs.map<OfferCreationInput>((log, index) => {
-          const offerView = offerViews[index];
-
-          return {
-            offerId: log.args.offerId,
-            providerId: log.args.provider,
-            active: offerView.active,
-            minSizeBytes: offerView.terms.minSizeBytes,
-            maxSizeBytes: offerView.terms.maxSizeBytes,
-            minDurationEpochs: offerView.terms.minDurationEpochs,
-            maxDurationEpochs: offerView.terms.maxDurationEpochs,
-            retrievabilityBps: offerView.slis.retrievabilityBps,
-            bandwidthBytesPerSecond: offerView.slis.bandwidthBytesPerSecond,
-            latencyMs: offerView.slis.latencyMs,
-            indexingPct: offerView.slis.indexingPct,
-            createdAtBlock: log.blockNumber,
-          };
-        }),
-      }),
-      this.prismaService.po_rep_offer_payment.createMany({
-        data: offerViews.flatMap<OfferPaymentCreationInput>((offerView) => {
-          return offerView.payments.map((payment) => {
-            return {
-              offerId: offerView.offerId,
-              token: payment.token,
-              active: payment.active,
-              pricePer32GiBPerMonth: payment.pricePer32GiBPerMonth.toString(),
-            };
-          });
-        }),
-      }),
-    ];
   }
 
-  private prepareOffersUpdates(logs: Logs): Prisma.PrismaPromise<unknown>[] {
+  private async createOffers(
+    tx: TransactionContext,
+    createdOffers: CreatedOffer[],
+  ): Promise<void> {
+    const offers = createdOffers.map<OfferInput>(({ log, offerView }) => {
+      return {
+        offerId: log.args.offerId.toString(),
+        providerId: log.args.provider.toString(),
+        active: offerView.active,
+        minSizeBytes: offerView.terms.minSizeBytes.toString(),
+        maxSizeBytes: offerView.terms.maxSizeBytes.toString(),
+        minDurationEpochs: offerView.terms.minDurationEpochs.toString(),
+        maxDurationEpochs: offerView.terms.maxDurationEpochs.toString(),
+        retrievabilityBps: offerView.slis.retrievabilityBps,
+        bandwidthBytesPerSecond:
+          offerView.slis.bandwidthBytesPerSecond.toString(),
+        latencyMs: offerView.slis.latencyMs,
+        indexingPct: offerView.slis.indexingPct,
+        createdAtBlock: log.blockNumber.toString(),
+      };
+    });
+
+    for (const part of chunk(offers, 1000)) {
+      await tx.insertInto('po_rep_offer').values(part).execute();
+    }
+
+    const offersPayments = createdOffers.flatMap<OfferPaymentInput>(
+      ({ offerView }) => {
+        return offerView.payments.map((payment) => {
+          return {
+            offerId: offerView.offerId.toString(),
+            token: payment.token,
+            active: payment.active,
+            pricePer32GiBPerMonth: payment.pricePer32GiBPerMonth.toString(),
+          };
+        });
+      },
+    );
+
+    for (const part of chunk(offersPayments, 1000)) {
+      await tx.insertInto('po_rep_offer_payment').values(part).execute();
+    }
+  }
+
+  private async updateOffers(
+    tx: TransactionContext,
+    logs: Logs,
+  ): Promise<void> {
     const offerActiveLogs = logs
       .filter((log) => {
         return isAddressEqual(
@@ -415,18 +505,19 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
         return log.eventName === 'OfferActiveUpdated';
       });
 
-    const offerActiveUpdates = Object.entries(
-      groupBy(offerActiveLogs, (log) => log.args.offerId.toString()),
-    ).map(([offerId, logsForOffer]) => {
-      return this.prismaService.po_rep_offer.update({
-        data: {
-          active: last(logsForOffer).args.active,
-        } satisfies OfferUpdateInput,
-        where: {
-          offerId: BigInt(offerId),
-        },
-      });
+    const logsGroupedByOffer = groupBy(offerActiveLogs, (log) => {
+      return log.args.offerId.toString();
     });
+
+    for (const [offerId, logsForOffer] of Object.entries(logsGroupedByOffer)) {
+      const result = await tx
+        .updateTable('po_rep_offer')
+        .set({ active: last(logsForOffer).args.active })
+        .where('offerId', '=', offerId)
+        .executeTakeFirst();
+
+      assertRowUpdated(result, `Offer "${offerId}" not found`);
+    }
 
     const offerPaymentLogs = logs
       .filter((log) => {
@@ -439,33 +530,26 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
         return log.eventName === 'OfferPaymentUpdated';
       });
 
-    const offerPaymentUpdates = offerPaymentLogs.map((log) => {
-      return this.prismaService.po_rep_offer_payment.upsert({
-        where: {
-          offerId_token: {
-            offerId: log.args.offerId,
-            token: log.args.token,
-          },
-        },
-        create: {
-          offerId: log.args.offerId,
+    for (const log of offerPaymentLogs) {
+      await tx
+        .insertInto('po_rep_offer_payment')
+        .values({
+          offerId: log.args.offerId.toString(),
           token: log.args.token,
           active: log.args.active,
           pricePer32GiBPerMonth: log.args.pricePer32GiBPerMonth.toString(),
-        },
-        update: {
-          active: log.args.active,
-          pricePer32GiBPerMonth: log.args.pricePer32GiBPerMonth.toString(),
-        },
-      });
-    });
-
-    return [...offerActiveUpdates, ...offerPaymentUpdates];
+        })
+        .onConflict((oc) =>
+          oc.columns(['offerId', 'token']).doUpdateSet((eb) => ({
+            active: eb.ref('excluded.active'),
+            pricePer32GiBPerMonth: eb.ref('excluded.pricePer32GiBPerMonth'),
+          })),
+        )
+        .execute();
+    }
   }
 
-  private async prepareDealsCreations(
-    logs: Logs,
-  ): Promise<Prisma.PrismaPromise<unknown>[]> {
+  private async resolveCreatedDeals(logs: Logs): Promise<CreatedDeal[]> {
     const dealCreatedLogs = logs
       .filter((log) => {
         return isAddressEqual(
@@ -477,11 +561,7 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
         return log.eventName === 'DealCreated';
       });
 
-    if (dealCreatedLogs.length === 0) {
-      return [];
-    }
-
-    const dealsOnChainData = await Promise.all(
+    return Promise.all(
       dealCreatedLogs.map(async (log) => {
         const [deal, terms, payment] = await Promise.all([
           this.recentNodeClient.readContract({
@@ -504,49 +584,66 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
           }),
         ]);
 
-        return [log, deal, terms, payment] as const;
+        return { log: log, deal: deal, terms: terms, payment: payment };
       }),
     );
+  }
 
-    return [
-      this.prismaService.po_rep_deal.createMany({
-        data: dealsOnChainData.map<DealCreationInput>(([log, deal]) => {
-          return {
-            dealId: log.args.dealId,
-            providerId: log.args.provider,
-            offerId: deal.offerId,
-            client: log.args.client,
-            state: PoRepDealState.ACCEPTED,
-            dealType: this.resolveDealType(deal.dealType),
-            manifestHash: log.args.manifestHash,
-            manifestLocation: log.args.manifestLocation,
-            totalDealSize: log.args.totalDealSize,
-            proposedAtBlock: log.args.proposedAtBlock,
-          };
-        }),
-      }),
-      this.prismaService.po_rep_deal_requirements.createMany({
-        data: dealCreatedLogs.map<DealRequirementsCreationInput>((log) => {
-          return {
-            dealId: log.args.dealId,
-            ...log.args.requirements,
-          };
-        }),
-      }),
-      this.prismaService.po_rep_deal_terms.createMany({
-        data: dealsOnChainData.map<DealTermsCreationInput>(
-          ([log, , terms, payment]) => {
-            return {
-              deal_id: log.args.dealId,
-              deal_size_bytes: terms.requestedSizeBytes,
-              price_per_sector_per_month:
-                payment.pricePer32GiBPerMonth.toString(),
-              duration_days: terms.durationEpochs / EPOCHS_IN_DAY,
-            };
-          },
-        ),
-      }),
-    ];
+  private async createDeals(
+    tx: TransactionContext,
+    createdDeals: CreatedDeal[],
+  ): Promise<void> {
+    const deals = createdDeals.map<DealInput>(({ log, deal }) => {
+      return {
+        dealId: log.args.dealId.toString(),
+        providerId: log.args.provider.toString(),
+        offerId: deal.offerId.toString(),
+        client: log.args.client,
+        state: PoRepDealState.ACCEPTED,
+        dealType: this.resolveDealType(deal.dealType),
+        manifestHash: log.args.manifestHash,
+        manifestLocation: log.args.manifestLocation,
+        totalDealSize: log.args.totalDealSize.toString(),
+        proposedAtBlock: log.args.proposedAtBlock.toString(),
+        railId: null,
+      };
+    });
+
+    for (const part of chunk(deals, 1000)) {
+      await tx.insertInto('po_rep_deal').values(part).execute();
+    }
+
+    const dealsRequirements = createdDeals.map<DealRequirementsInput>(
+      ({ log }) => {
+        return {
+          dealId: log.args.dealId.toString(),
+          retrievabilityBps: log.args.requirements.retrievabilityBps,
+          bandwidthBytesPerSecond:
+            log.args.requirements.bandwidthBytesPerSecond.toString(),
+          latencyMs: log.args.requirements.latencyMs,
+          indexingPct: log.args.requirements.indexingPct,
+        };
+      },
+    );
+
+    for (const part of chunk(dealsRequirements, 1000)) {
+      await tx.insertInto('po_rep_deal_requirements').values(part).execute();
+    }
+
+    const dealsTerms = createdDeals.map<DealTermsInput>(
+      ({ log, terms, payment }) => {
+        return {
+          deal_id: log.args.dealId.toString(),
+          deal_size_bytes: terms.requestedSizeBytes.toString(),
+          price_per_sector_per_month: payment.pricePer32GiBPerMonth.toString(),
+          duration_days: (terms.durationEpochs / EPOCHS_IN_DAY).toString(),
+        };
+      },
+    );
+
+    for (const part of chunk(dealsTerms, 1000)) {
+      await tx.insertInto('po_rep_deal_terms').values(part).execute();
+    }
   }
 
   private resolveDealType(contractValue: number): PoRepDealType {
@@ -606,10 +703,11 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
     );
   }
 
-  private prepareDealsUpdates(
+  private async updateDeals(
+    tx: TransactionContext,
     logs: Logs,
     terminatedDealsStates: TerminatedDealsStates,
-  ): Prisma.PrismaPromise<unknown>[] {
+  ): Promise<void> {
     const poRepMarketLogs = logs.filter((log): log is PoRepMarketLog => {
       return (
         isAddressEqual(
@@ -622,34 +720,44 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
       );
     });
 
-    if (poRepMarketLogs.length === 0) {
-      return [];
-    }
-
     const logsGroupedByDeal = groupBy(poRepMarketLogs, (log) => {
       return log.args.dealId.toString();
     });
 
-    return Object.entries(logsGroupedByDeal).map(([dealId, logsForDeal]) => {
-      return this.prismaService.po_rep_deal.update({
-        data: logsForDeal.reduce<DealUpdateInput>((updateInput, log) => {
-          return this.logToDealUpdateInput(
-            updateInput,
-            log,
-            terminatedDealsStates,
-          );
-        }, {}),
-        where: {
-          dealId: BigInt(dealId),
-        },
-      });
-    });
+    for (const [dealId, logsForDeal] of Object.entries(logsGroupedByDeal)) {
+      const values = logsForDeal.reduce<DealUpdate>((update, log) => {
+        return this.logToDealUpdate(update, log, terminatedDealsStates);
+      }, {});
+
+      if (Object.keys(values).length === 0) {
+        continue;
+      }
+
+      const result = await tx
+        .updateTable('po_rep_deal')
+        .set(values)
+        .where('dealId', '=', dealId)
+        .executeTakeFirst();
+
+      assertRowUpdated(result, `Deal "${dealId}" not found`);
+
+      if (values.totalDealSize) {
+        const termsResult = await tx
+          .updateTable('po_rep_deal_terms')
+          .set({ deal_size_bytes: values.totalDealSize })
+          .where('deal_id', '=', dealId)
+          .executeTakeFirst();
+
+        assertRowUpdated(termsResult, `Terms of deal "${dealId}" not found`);
+      }
+    }
   }
 
-  private prepareDealStateChangeCreations(
+  private async createDealsStateChanges(
+    tx: TransactionContext,
     logs: Logs,
     terminatedDealsStates: TerminatedDealsStates,
-  ): Prisma.PrismaPromise<unknown>[] {
+  ): Promise<void> {
     const stateChangeLogs = logs
       .filter((log) => {
         return isAddressEqual(
@@ -667,167 +775,160 @@ export class PoRepProvidersAndDealsIndexerRunner extends AbstractPoRepIndexerRun
         );
       });
 
-    if (stateChangeLogs.length === 0) {
-      return [];
-    }
+    const stateChanges = stateChangeLogs.reduce<DealStateChangeInput[]>(
+      (result, log) => {
+        const state = this.logToDealState(log, terminatedDealsStates);
 
-    return [
-      this.prismaService.po_rep_deal_state_change.createMany({
-        data: stateChangeLogs.reduce<DealStateChangeCreationInput[]>(
-          (result, log) => {
-            const state = this.logToDealState(log, terminatedDealsStates);
+        if (state === null) {
+          return result;
+        }
 
-            if (state === null) {
-              return result;
-            }
-
-            return [
-              ...result,
-              {
-                deal_id: log.args.dealId,
-                state: state,
-                changed_at_block: log.blockNumber,
-              },
-            ];
+        return [
+          ...result,
+          {
+            deal_id: log.args.dealId.toString(),
+            state: state,
+            changed_at_block: log.blockNumber.toString(),
           },
-          [],
-        ),
-      }),
-    ];
+        ];
+      },
+      [],
+    );
+
+    for (const part of chunk(stateChanges, 1000)) {
+      await tx.insertInto('po_rep_deal_state_change').values(part).execute();
+    }
   }
 
-  private logToProviderUpdateInput(
-    previousUpdateInput: ProviderUpdateInput,
+  private logToProviderUpdate(
+    previousUpdate: ProviderUpdate,
     log: Log,
-  ): ProviderUpdateInput {
+  ): ProviderUpdate {
     switch (log.eventName) {
       case 'AvailableSpaceUpdated':
         return {
-          ...previousUpdateInput,
-          availableBytes: log.args.availableBytes,
+          ...previousUpdate,
+          values: {
+            ...previousUpdate.values,
+            availableBytes: log.args.availableBytes.toString(),
+          },
         };
       case 'CapacityCommitted':
         return {
-          ...previousUpdateInput,
-          committedBytes: mergeBigIntFieldUpdate(
-            previousUpdateInput.committedBytes,
-            {
-              increment: log.args.committedBytes,
-            },
-          ),
+          ...previousUpdate,
+          committedBytesChange:
+            previousUpdate.committedBytesChange + log.args.committedBytes,
         };
       case 'CapacityReleased':
         return {
-          ...previousUpdateInput,
-          committedBytes: mergeBigIntFieldUpdate(
-            previousUpdateInput.committedBytes,
-            {
-              decrement: log.args.releasedBytes,
-            },
-          ),
+          ...previousUpdate,
+          committedBytesChange:
+            previousUpdate.committedBytesChange - log.args.releasedBytes,
         };
       case 'PendingCapacityReserved':
         return {
-          ...previousUpdateInput,
-          pendingBytes: mergeBigIntFieldUpdate(
-            previousUpdateInput.pendingBytes,
-            {
-              increment: log.args.sizeBytes,
-            },
-          ),
+          ...previousUpdate,
+          pendingBytesChange:
+            previousUpdate.pendingBytesChange + log.args.sizeBytes,
         };
       case 'PendingCapacityReleased':
         return {
-          ...previousUpdateInput,
-          pendingBytes: mergeBigIntFieldUpdate(
-            previousUpdateInput.pendingBytes,
-            {
-              decrement: log.args.sizeBytes,
-            },
-          ),
+          ...previousUpdate,
+          pendingBytesChange:
+            previousUpdate.pendingBytesChange - log.args.sizeBytes,
         };
       case 'ProviderBlocked':
         return {
-          ...previousUpdateInput,
-          blocked: true,
+          ...previousUpdate,
+          values: {
+            ...previousUpdate.values,
+            blocked: true,
+          },
         };
       case 'ProviderUnblocked':
         return {
-          ...previousUpdateInput,
-          blocked: false,
+          ...previousUpdate,
+          values: {
+            ...previousUpdate.values,
+            blocked: false,
+          },
         };
       case 'ProviderPaused':
         return {
-          ...previousUpdateInput,
-          paused: true,
+          ...previousUpdate,
+          values: {
+            ...previousUpdate.values,
+            paused: true,
+          },
         };
       case 'ProviderUnpaused':
         return {
-          ...previousUpdateInput,
-          paused: false,
+          ...previousUpdate,
+          values: {
+            ...previousUpdate.values,
+            paused: false,
+          },
         };
       case 'PayeeUpdated':
         return {
-          ...previousUpdateInput,
-          payee: log.args.newPayee,
+          ...previousUpdate,
+          values: {
+            ...previousUpdate.values,
+            payee: log.args.newPayee,
+          },
         };
       default:
-        return previousUpdateInput;
+        return previousUpdate;
     }
   }
 
-  private logToDealUpdateInput(
-    previousUpdateInput: DealUpdateInput,
+  private logToDealUpdate(
+    previousUpdate: DealUpdate,
     log: Log,
     terminatedDealsStates: TerminatedDealsStates,
-  ): DealUpdateInput {
+  ): DealUpdate {
     switch (log.eventName) {
       case 'DealAccepted':
         return {
-          ...previousUpdateInput,
+          ...previousUpdate,
           state: PoRepDealState.ACCEPTED,
         };
       case 'RailIdUpdated':
         return {
-          ...previousUpdateInput,
-          railId: log.args.railId,
+          ...previousUpdate,
+          railId: log.args.railId.toString(),
         };
       case 'PaymentActivated':
         return {
-          ...previousUpdateInput,
+          ...previousUpdate,
           state: PoRepDealState.ACTIVE,
         };
       case 'DealFinalized':
         return {
-          ...previousUpdateInput,
+          ...previousUpdate,
           state: PoRepDealState.FINALIZED,
         };
       case 'DealRejected':
         return {
-          ...previousUpdateInput,
+          ...previousUpdate,
           state: PoRepDealState.REJECTED,
         };
       case 'DealTerminated':
         return {
-          ...previousUpdateInput,
+          ...previousUpdate,
           state:
             terminatedDealsStates.get(log.args.dealId.toString()) ??
             PoRepDealState.EARLY_TERMINATED,
         };
       case 'ManifestUpdated':
         return {
-          ...previousUpdateInput,
+          ...previousUpdate,
           manifestHash: log.args.newManifestHash,
           manifestLocation: log.args.newManifestLocation,
-          totalDealSize: log.args.newRequestedSizeBytes,
-          terms: {
-            update: {
-              deal_size_bytes: log.args.newRequestedSizeBytes,
-            },
-          },
+          totalDealSize: log.args.newRequestedSizeBytes.toString(),
         };
       default:
-        return previousUpdateInput;
+        return previousUpdate;
     }
   }
 

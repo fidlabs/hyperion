@@ -1,5 +1,8 @@
-import { groupBy, uniq } from 'lodash';
-import { Prisma } from '../../generated/prisma/client';
+import { randomUUID } from 'crypto';
+import { type InsertObject, type Updateable } from 'kysely';
+import { chunk, groupBy, last, uniq } from 'lodash';
+import { type DB, type TransactionContext } from 'src/db';
+import { createFilecoinPayAccountsLockupsQuery } from 'src/db/queries/filecoin-pay-accounts-lockups.query';
 import {
   type AbiEvent,
   type Address,
@@ -12,11 +15,10 @@ import { FILECOIN_PAY_ORIGIN_BLOCK } from '../po-rep-indexer.constants';
 import { AbstractPoRepIndexerRunner } from './abstract-po-rep-indexer.runner';
 
 type EventType = (typeof events)[number];
-type RailCreationInput = Prisma.filecoin_pay_railCreateManyInput;
-type PaymentCreationInput = Prisma.filecoin_pay_paymentCreateManyInput;
-type RailUpdateInput = Prisma.filecoin_pay_railUpdateManyMutationInput;
-type AccountTransferCreationInput =
-  Prisma.filecoin_pay_account_transferCreateManyInput;
+type RailInput = InsertObject<DB, 'filecoin_pay_rail'>;
+type PaymentInput = InsertObject<DB, 'filecoin_pay_payment'>;
+type AccountTransferInput = InsertObject<DB, 'filecoin_pay_account_transfer'>;
+type AccountStateInput = InsertObject<DB, 'filecoin_pay_account_state'>;
 
 type Log = GetLogsReturnType<
   undefined,
@@ -27,6 +29,11 @@ type Log = GetLogsReturnType<
 >[number];
 type Logs = Log[];
 type RailLog = Extract<Log, { args: { railId: bigint } }>;
+
+interface RailUpdate {
+  values: Updateable<DB['filecoin_pay_rail']>;
+  lockupFixedDecrement: bigint;
+}
 
 interface RailAccounts {
   token: string;
@@ -82,61 +89,57 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
     return this.configService.get('FILECOIN_PAY_CONTRACT_ADDRESS');
   }
 
-  protected prepareCleanup(): Prisma.PrismaPromise<unknown>[] {
-    return [
-      this.prismaService.filecoin_pay_account_state.deleteMany(),
-      this.prismaService.filecoin_pay_account_transfer.deleteMany(),
-      this.prismaService.filecoin_pay_payment.deleteMany(),
-      this.prismaService.filecoin_pay_rail.deleteMany(),
-    ];
+  protected async cleanup(tx: TransactionContext): Promise<void> {
+    await tx.deleteFrom('filecoin_pay_account_state').execute();
+    await tx.deleteFrom('filecoin_pay_account_transfer').execute();
+    await tx.deleteFrom('filecoin_pay_payment').execute();
+    await tx.deleteFrom('filecoin_pay_rail').execute();
   }
 
-  protected async prepareUpdates(
-    logs: Logs,
-  ): Promise<Prisma.PrismaPromise<unknown>[]> {
-    const accountsFundsUpdates = await this.prepareAccountsFundsUpdates(logs);
-
-    return [
-      ...this.prepareRailsCreations(logs),
-      ...this.prepareRailUpdates(logs),
-      ...this.preparePaymentsCreations(logs),
-      ...this.prepareAccountsTransfersCreations(logs),
-      ...accountsFundsUpdates,
-      ...this.prepareAccountsLockupsUpdates(logs),
-    ];
+  protected getChanges(logs: Logs): Logs {
+    return logs;
   }
 
-  private prepareRailsCreations(logs: Logs): Prisma.PrismaPromise<unknown>[] {
-    const createLogs = logs.filter((log) => {
-      return log.eventName === 'RailCreated';
-    });
+  protected async updateDb(tx: TransactionContext, logs: Logs): Promise<void> {
+    await this.createRails(tx, logs);
+    await this.updateRails(tx, logs);
+    await this.createPayments(tx, logs);
+    await this.createAccountsTransfers(tx, logs);
+    await this.updateAccountsFunds(tx, logs);
+    await this.updateAccountsLockups(tx, logs);
+  }
 
-    if (createLogs.length === 0) {
-      return [];
+  private async createRails(tx: TransactionContext, logs: Logs): Promise<void> {
+    const rails = logs
+      .filter((log) => log.eventName === 'RailCreated')
+      .map<RailInput>((log) => {
+        return {
+          railId: log.args.railId.toString(),
+          token: log.args.token,
+          from: log.args.payer,
+          to: log.args.payee,
+          operator: log.args.operator,
+          validator: log.args.validator,
+          paymentRate: '0',
+          lockupPeriod: '0',
+          lockupFixed: '0',
+          settledUpTo: log.blockNumber.toString(),
+          endEpoch: '0',
+          // eslint-disable-next-line no-restricted-syntax
+          commissionRateBps: Number(log.args.commissionRateBps),
+          serviceFeeRecipient: log.args.serviceFeeRecipient,
+          finalized: false,
+          createdAtBlock: log.blockNumber.toString(),
+          activatedAtBlock: '0',
+        };
+      });
+
+    for (const part of chunk(rails, 1000)) {
+      await tx.insertInto('filecoin_pay_rail').values(part).execute();
     }
-
-    return [
-      this.prismaService.filecoin_pay_rail.createMany({
-        data: createLogs.map<RailCreationInput>((log) => {
-          return {
-            railId: log.args.railId,
-            token: log.args.token,
-            from: log.args.payer,
-            to: log.args.payee,
-            operator: log.args.operator,
-            validator: log.args.validator,
-            settledUpTo: log.blockNumber,
-            // eslint-disable-next-line no-restricted-syntax
-            commissionRateBps: Number(log.args.commissionRateBps),
-            serviceFeeRecipient: log.args.serviceFeeRecipient,
-            createdAtBlock: log.blockNumber,
-          };
-        }),
-      }),
-    ];
   }
 
-  private prepareRailUpdates(logs: Logs): Prisma.PrismaPromise<unknown>[] {
+  private async updateRails(tx: TransactionContext, logs: Logs): Promise<void> {
     const filecoinPayLogs = logs.filter(isRailLog).filter((log) => {
       return isAddressEqual(
         log.address,
@@ -148,46 +151,62 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
       return log.args.railId.toString();
     });
 
-    return Object.entries(logsGroupedByRail).map(([railId, logsForRail]) => {
-      // We use `updateMany` here because we want to skip updated on rail we
-      // dont have registered (they were created before runner's origin block)
-      return this.prismaService.filecoin_pay_rail.updateMany({
-        data: logsForRail.reduce(this.logToRailUpdateInput, {}),
-        where: {
-          railId: BigInt(railId),
-        },
-      });
-    });
+    for (const [railId, logsForRail] of Object.entries(logsGroupedByRail)) {
+      const { values, lockupFixedDecrement } = logsForRail.reduce<RailUpdate>(
+        this.logToRailUpdate,
+        { values: {}, lockupFixedDecrement: 0n },
+      );
+
+      if (Object.keys(values).length === 0 && lockupFixedDecrement === 0n) {
+        continue;
+      }
+
+      await tx
+        .updateTable('filecoin_pay_rail')
+        .set((eb) => ({
+          ...values,
+          ...(lockupFixedDecrement !== 0n
+            ? {
+                lockupFixed:
+                  typeof values.lockupFixed === 'string'
+                    ? (
+                        BigInt(values.lockupFixed) - lockupFixedDecrement
+                      ).toString()
+                    : eb('lockupFixed', '-', lockupFixedDecrement.toString()),
+              }
+            : {}),
+        }))
+        .where('railId', '=', railId)
+        .execute();
+    }
   }
 
-  private preparePaymentsCreations(
+  private async createPayments(
+    tx: TransactionContext,
     logs: Logs,
-  ): Prisma.PrismaPromise<unknown>[] {
-    if (logs.length === 0) {
-      return [];
-    }
-
-    const oneTimePaymentsCreations = logs
+  ): Promise<void> {
+    const oneTimePayments = logs
       .filter((log) => log.eventName === 'RailOneTimePaymentProcessed')
-      .map<PaymentCreationInput>((log) => {
+      .map<PaymentInput>((log) => {
         const { railId, netPayeeAmount, networkFee, operatorCommission } =
           log.args;
         const totalAmount = netPayeeAmount + networkFee + operatorCommission;
 
         return {
-          railId: railId,
+          id: randomUUID(),
+          railId: railId.toString(),
           totalAmount: totalAmount.toString(),
           netPayeeAmount: netPayeeAmount.toString(),
           networkFee: networkFee.toString(),
           operatorCommission: operatorCommission.toString(),
           oneTime: true,
-          createdAtBlock: log.blockNumber,
+          createdAtBlock: log.blockNumber.toString(),
         };
       });
 
-    const settlementsCreations = logs
+    const settlements = logs
       .filter((log) => log.eventName === 'RailSettled')
-      .map<PaymentCreationInput>((log) => {
+      .map<PaymentInput>((log) => {
         const {
           railId,
           totalSettledAmount,
@@ -197,63 +216,63 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
         } = log.args;
 
         return {
-          railId: railId,
+          id: randomUUID(),
+          railId: railId.toString(),
           totalAmount: totalSettledAmount.toString(),
           netPayeeAmount: totalNetPayeeAmount.toString(),
           networkFee: networkFee.toString(),
           operatorCommission: operatorCommission.toString(),
           oneTime: false,
-          createdAtBlock: log.blockNumber,
+          createdAtBlock: log.blockNumber.toString(),
         };
       });
 
-    return [
-      this.prismaService.filecoin_pay_payment.createMany({
-        data: [...oneTimePaymentsCreations, ...settlementsCreations],
-      }),
-    ];
+    for (const part of chunk([...oneTimePayments, ...settlements], 1000)) {
+      await tx.insertInto('filecoin_pay_payment').values(part).execute();
+    }
   }
 
-  private prepareAccountsTransfersCreations(
+  private async createAccountsTransfers(
+    tx: TransactionContext,
     logs: Logs,
-  ): Prisma.PrismaPromise<unknown>[] {
-    if (logs.length === 0) {
-      return [];
-    }
-
-    const depositsCreations = logs
+  ): Promise<void> {
+    const deposits = logs
       .filter((log) => log.eventName === 'DepositRecorded')
-      .map<AccountTransferCreationInput>((log) => {
+      .map<AccountTransferInput>((log) => {
         return {
+          id: randomUUID(),
           token: log.args.token,
           owner: log.args.to,
           amount: log.args.amount.toString(),
-          createdAtBlock: log.blockNumber,
+          createdAtBlock: log.blockNumber.toString(),
         };
       });
 
-    const withdrawalsCreations = logs
+    const withdrawals = logs
       .filter((log) => log.eventName === 'WithdrawRecorded')
-      .map<AccountTransferCreationInput>((log) => {
+      .map<AccountTransferInput>((log) => {
         return {
+          id: randomUUID(),
           token: log.args.token,
           owner: log.args.from,
           amount: (-log.args.amount).toString(),
-          createdAtBlock: log.blockNumber,
+          createdAtBlock: log.blockNumber.toString(),
         };
       });
 
-    return [
-      this.prismaService.filecoin_pay_account_transfer.createMany({
-        data: [...depositsCreations, ...withdrawalsCreations],
-      }),
-    ];
+    for (const part of chunk([...deposits, ...withdrawals], 1000)) {
+      await tx
+        .insertInto('filecoin_pay_account_transfer')
+        .values(part)
+        .execute();
+    }
   }
 
-  private async prepareAccountsFundsUpdates(
+  private async updateAccountsFunds(
+    tx: TransactionContext,
     logs: Logs,
-  ): Promise<Prisma.PrismaPromise<unknown>[]> {
-    const railsAccounts = await this.getRailsAccounts(logs);
+  ): Promise<void> {
+    const railsAccounts = await this.getRailsAccounts(tx, logs);
 
     const fundsChanges = logs.flatMap<AccountFundsChange>((log) => {
       switch (log.eventName) {
@@ -275,14 +294,14 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
           ];
         case 'RailSettled':
           return this.paymentToFundsChanges(
-            railsAccounts.get(log.args.railId),
+            railsAccounts.get(log.args.railId.toString()),
             log.args.totalSettledAmount,
             log.args.totalNetPayeeAmount,
             log.args.operatorCommission,
           );
         case 'RailOneTimePaymentProcessed':
           return this.paymentToFundsChanges(
-            railsAccounts.get(log.args.railId),
+            railsAccounts.get(log.args.railId.toString()),
             log.args.netPayeeAmount +
               log.args.networkFee +
               log.args.operatorCommission,
@@ -299,31 +318,38 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
       (change) => `${change.owner}-${change.token}`,
     );
 
-    return Object.values(changesGroupedByAccount).map((accountChanges) => {
+    const accountsStates = Object.values(
+      changesGroupedByAccount,
+    ).map<AccountStateInput>((accountChanges) => {
       const { token, owner } = accountChanges[0];
-      const fundsChange = accountChanges
-        .reduce((sum, change) => sum + change.amount, 0n)
-        .toString();
 
-      return this.prismaService.filecoin_pay_account_state.upsert({
-        where: {
-          owner_token: {
-            owner: owner,
-            token: token,
-          },
-        },
-        create: {
-          owner: owner,
-          token: token,
-          funds: fundsChange,
-        },
-        update: {
-          funds: {
-            increment: fundsChange,
-          },
-        },
-      });
+      return {
+        owner: owner,
+        token: token,
+        funds: accountChanges
+          .reduce((sum, change) => sum + change.amount, 0n)
+          .toString(),
+        lockupCurrent: '0',
+        lockupRate: '0',
+        lockupLastSettledAt: '0',
+      };
     });
+
+    for (const part of chunk(accountsStates, 1000)) {
+      await tx
+        .insertInto('filecoin_pay_account_state')
+        .values(part)
+        .onConflict((oc) =>
+          oc.columns(['owner', 'token']).doUpdateSet((eb) => ({
+            funds: eb(
+              'filecoin_pay_account_state.funds',
+              '+',
+              eb.ref('excluded.funds'),
+            ),
+          })),
+        )
+        .execute();
+    }
   }
 
   private paymentToFundsChanges(
@@ -346,166 +372,128 @@ export class FilecoinPayIndexerRunner extends AbstractPoRepIndexerRunner<EventTy
   }
 
   private async getRailsAccounts(
+    tx: TransactionContext,
     logs: Logs,
-  ): Promise<Map<bigint, RailAccounts>> {
-    const railsAccounts = new Map<bigint, RailAccounts>();
-
-    logs.forEach((log) => {
-      if (log.eventName === 'RailCreated') {
-        railsAccounts.set(log.args.railId, {
-          token: log.args.token,
-          from: log.args.payer,
-          to: log.args.payee,
-          serviceFeeRecipient: log.args.serviceFeeRecipient,
-        });
-      }
-    });
-
-    const missingRailsIds = uniq(
-      logs.filter(isRailLog).map((log) => log.args.railId),
-    ).filter((railId) => !railsAccounts.has(railId));
-
-    if (missingRailsIds.length === 0) {
-      return railsAccounts;
-    }
-
-    const savedRails = await this.prismaService.filecoin_pay_rail.findMany({
-      where: {
-        railId: {
-          in: missingRailsIds,
-        },
-      },
-    });
-
-    savedRails.forEach((rail) => {
-      railsAccounts.set(rail.railId, rail);
-    });
-
-    return railsAccounts;
-  }
-
-  private prepareAccountsLockupsUpdates(
-    logs: Logs,
-  ): Prisma.PrismaPromise<unknown>[] {
-    const railsIds = uniq(logs.filter(isRailLog).map((log) => log.args.railId));
+  ): Promise<Map<string, RailAccounts>> {
+    const railsIds = this.getRailsIds(logs);
 
     if (railsIds.length === 0) {
-      return [];
+      return new Map();
     }
 
-    const lastBlock = logs[logs.length - 1].blockNumber;
+    const rails = await tx
+      .selectFrom('filecoin_pay_rail')
+      .select(['railId', 'token', 'from', 'to', 'serviceFeeRecipient'])
+      .where('railId', 'in', railsIds)
+      .execute();
 
-    return [
-      this.prismaService.$executeRaw`
-        INSERT INTO "filecoin_pay_account_state" (
-          "owner",
-          "token",
-          "lockupCurrent",
-          "lockupRate",
-          "lockupLastSettledAt"
-        )
-        SELECT
-          "from",
-          "token",
-          COALESCE(
-            SUM(
-              "lockupFixed" + "paymentRate" * (
-                CASE
-                  WHEN "endEpoch" = 0 THEN "lockupPeriod" + ${lastBlock}::bigint
-                  ELSE "endEpoch"
-                END - "settledUpTo"
-              )
-            ) FILTER (WHERE NOT "finalized"),
-            0
-          ),
-          COALESCE(
-            SUM("paymentRate") FILTER (WHERE NOT "finalized" AND "endEpoch" = 0),
-            0
-          ),
-          ${lastBlock}::bigint
-        FROM "filecoin_pay_rail"
-        WHERE ("from", "token") IN (
-          SELECT "from", "token"
-          FROM "filecoin_pay_rail"
-          WHERE "railId" IN (${Prisma.join(railsIds)})
-        )
-        GROUP BY "from", "token"
-        ON CONFLICT ("owner", "token") DO UPDATE SET
-          "lockupCurrent" = EXCLUDED."lockupCurrent",
-          "lockupRate" = EXCLUDED."lockupRate",
-          "lockupLastSettledAt" = EXCLUDED."lockupLastSettledAt"
-      `,
-    ];
+    return new Map(rails.map((rail) => [rail.railId, rail]));
   }
 
-  private logToRailUpdateInput(
-    previousUpdateInput: RailUpdateInput,
-    log: Log,
-  ): RailUpdateInput {
+  private async updateAccountsLockups(
+    tx: TransactionContext,
+    logs: Logs,
+  ): Promise<void> {
+    const railsIds = this.getRailsIds(logs);
+
+    if (railsIds.length === 0) {
+      return;
+    }
+
+    await tx
+      .insertInto('filecoin_pay_account_state')
+      .columns([
+        'owner',
+        'token',
+        'lockupCurrent',
+        'lockupRate',
+        'lockupLastSettledAt',
+      ])
+      .expression(
+        createFilecoinPayAccountsLockupsQuery(tx, {
+          railsIds: railsIds,
+          epoch: last(logs).blockNumber.toString(),
+        }),
+      )
+      .onConflict((oc) =>
+        oc.columns(['owner', 'token']).doUpdateSet((eb) => ({
+          lockupCurrent: eb.ref('excluded.lockupCurrent'),
+          lockupRate: eb.ref('excluded.lockupRate'),
+          lockupLastSettledAt: eb.ref('excluded.lockupLastSettledAt'),
+        })),
+      )
+      .execute();
+  }
+
+  private getRailsIds(logs: Logs): string[] {
+    return uniq(
+      logs.filter(isRailLog).map((log) => log.args.railId.toString()),
+    );
+  }
+
+  private logToRailUpdate(previousUpdate: RailUpdate, log: Log): RailUpdate {
     switch (log.eventName) {
       case 'RailLockupModified':
         return {
-          ...previousUpdateInput,
-          lockupPeriod: log.args.newLockupPeriod,
-          lockupFixed: log.args.newLockupFixed.toString(),
+          values: {
+            ...previousUpdate.values,
+            lockupPeriod: log.args.newLockupPeriod.toString(),
+            lockupFixed: log.args.newLockupFixed.toString(),
+          },
+          lockupFixedDecrement: 0n,
         };
       case 'RailRateModified':
         return {
-          ...previousUpdateInput,
-          paymentRate: log.args.newRate.toString(),
-          ...(log.args.oldRate === 0n && log.args.newRate > 0n
-            ? {
-                activatedAtBlock: log.blockNumber,
-                settledUpTo: log.blockNumber,
-              }
-            : {}),
+          ...previousUpdate,
+          values: {
+            ...previousUpdate.values,
+            paymentRate: log.args.newRate.toString(),
+            ...(log.args.oldRate === 0n && log.args.newRate > 0n
+              ? {
+                  activatedAtBlock: log.blockNumber.toString(),
+                  settledUpTo: log.blockNumber.toString(),
+                }
+              : {}),
+          },
         };
       case 'RailSettled':
         return {
-          ...previousUpdateInput,
-          settledUpTo: log.args.settledUpTo,
+          ...previousUpdate,
+          values: {
+            ...previousUpdate.values,
+            settledUpTo: log.args.settledUpTo.toString(),
+          },
         };
       case 'RailTerminated':
         return {
-          ...previousUpdateInput,
-          endEpoch: log.args.endEpoch,
+          ...previousUpdate,
+          values: {
+            ...previousUpdate.values,
+            endEpoch: log.args.endEpoch.toString(),
+          },
         };
       case 'RailFinalized':
         // On-chain, when rail is finalized, all adresses, rate, lockups etc.
         // are reset to zero. We instead set a flag and keep the data.
         return {
-          ...previousUpdateInput,
-          lockupFixed: 0,
-          finalized: true,
-        };
-      case 'RailOneTimePaymentProcessed': {
-        const { lockupFixed } = previousUpdateInput;
-        const paymentAmount =
-          log.args.netPayeeAmount +
-          log.args.networkFee +
-          log.args.operatorCommission;
-
-        if (typeof lockupFixed === 'string') {
-          return {
-            ...previousUpdateInput,
-            lockupFixed: (BigInt(lockupFixed) - paymentAmount).toString(),
-          };
-        }
-
-        const previousDecrement =
-          typeof lockupFixed === 'object' && 'decrement' in lockupFixed
-            ? BigInt(lockupFixed.decrement?.toString() ?? 0)
-            : 0n;
-
-        return {
-          ...previousUpdateInput,
-          lockupFixed: {
-            decrement: (previousDecrement + paymentAmount).toString(),
+          values: {
+            ...previousUpdate.values,
+            lockupFixed: '0',
+            finalized: true,
           },
+          lockupFixedDecrement: 0n,
         };
-      }
+      case 'RailOneTimePaymentProcessed':
+        return {
+          ...previousUpdate,
+          lockupFixedDecrement:
+            previousUpdate.lockupFixedDecrement +
+            log.args.netPayeeAmount +
+            log.args.networkFee +
+            log.args.operatorCommission,
+        };
       default:
-        return previousUpdateInput;
+        return previousUpdate;
     }
   }
 }

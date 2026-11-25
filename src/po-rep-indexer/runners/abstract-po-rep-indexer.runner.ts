@@ -7,10 +7,13 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
 import { DateTime } from 'luxon';
-import { PrismaService } from 'src/db/prisma.service';
+import {
+  InjectQueryBuilder,
+  type QueryBuilder,
+  type TransactionContext,
+} from 'src/db';
 import { compareNullableNumber, maxBigInt } from 'src/utils/utils';
 import { AbiEvent, Address, GetLogsReturnType, Log } from 'viem';
-import { Prisma } from '../../generated/prisma/client';
 import { DealManifestService } from '../deal-manifest.service';
 import {
   ARCHIVE_NODE_CLIENT,
@@ -18,9 +21,18 @@ import {
 } from '../po-rep-indexer.constants';
 import { PoRepConfig, PoRepPublicClient } from '../po-rep-indexer.types';
 
+export type LogsForEvents<EventType extends AbiEvent> = GetLogsReturnType<
+  undefined,
+  EventType[],
+  undefined,
+  bigint,
+  bigint
+>;
+
 @Injectable()
 export abstract class AbstractPoRepIndexerRunner<
   EventType extends AbiEvent = AbiEvent,
+  Changes = LogsForEvents<EventType>,
 > implements OnApplicationBootstrap {
   // Returns runner name used for storing information about indexing
   public abstract getName(): string;
@@ -41,13 +53,20 @@ export abstract class AbstractPoRepIndexerRunner<
   // Returns address or list of addresses from which indexed logs should originate
   protected abstract getOriginAddresses(): Address | Address[] | undefined;
 
-  // Return DB operations necessary for cleanup when version changes
-  protected abstract prepareCleanup(): Prisma.PrismaPromise<unknown>[];
+  // Remove indexed data when version changes
+  protected abstract cleanup(tx: TransactionContext): Promise<void>;
 
-  // Return DB updates based on processed logs
-  protected abstract prepareUpdates(
-    logs: GetLogsReturnType<undefined, EventType[], undefined, bigint, bigint>,
-  ): Prisma.PrismaPromise<unknown>[] | Promise<Prisma.PrismaPromise<unknown>[]>;
+  // Return changes based on processed logs, along with all the data needed to
+  // save them
+  protected abstract getChanges(
+    logs: LogsForEvents<EventType>,
+  ): Changes | Promise<Changes>;
+
+  // Save changes to the DB
+  protected abstract updateDb(
+    tx: TransactionContext,
+    changes: Changes,
+  ): Promise<void>;
 
   protected logger: Logger;
   private isRunning: boolean = false;
@@ -55,7 +74,7 @@ export abstract class AbstractPoRepIndexerRunner<
   constructor(
     protected readonly configService: ConfigService<PoRepConfig, true>,
     protected readonly schedulerRegistry: SchedulerRegistry,
-    protected readonly prismaService: PrismaService,
+    @InjectQueryBuilder() protected readonly queryBuilder: QueryBuilder,
     @Inject(RECENT_NODE_CLIENT)
     protected readonly recentNodeClient: PoRepPublicClient,
     @Inject(ARCHIVE_NODE_CLIENT)
@@ -117,23 +136,21 @@ export abstract class AbstractPoRepIndexerRunner<
     const version = this.getVersion();
     const [recentHead, lastRun] = await Promise.all([
       this.recentNodeClient.getBlockNumber(),
-      this.prismaService.po_rep_indexer_run.findFirst({
-        where: {
-          chainId: chainId,
-          runner: runner,
-          version: version,
-        },
-        orderBy: {
-          date: 'desc',
-        },
-      }),
+      this.queryBuilder
+        .selectFrom('po_rep_indexer_run')
+        .selectAll()
+        .where('chainId', '=', chainId.toString())
+        .where('runner', '=', runner)
+        .where('version', '=', version)
+        .orderBy('date', 'desc')
+        .executeTakeFirst(),
     ]);
 
     // Starting epoch selection
     const versionChanged = !lastRun || lastRun.version !== version;
     const fromBlock = versionChanged
       ? this.getOriginBlock()
-      : lastRun.blockEnd + 1n;
+      : BigInt(lastRun.blockEnd) + 1n;
 
     // Node selection
     const shouldUseArchiveNode =
@@ -193,25 +210,28 @@ export abstract class AbstractPoRepIndexerRunner<
     const logsSorted = this.sortLogs(logs);
 
     // DB Updates
-    const updates = await this.prepareUpdates(logsSorted);
+    const changes = await this.getChanges(logsSorted);
 
-    const operations: Prisma.PrismaPromise<unknown>[] = [
-      ...(versionChanged ? this.prepareCleanup() : []),
-      ...updates,
-      this.prismaService.po_rep_indexer_run.create({
-        data: {
-          date: startDate.toJSDate(),
-          chainId: chainId,
+    await this.queryBuilder.transaction().execute(async (tx) => {
+      if (versionChanged) {
+        await this.cleanup(tx);
+      }
+
+      await this.updateDb(tx, changes);
+
+      await tx
+        .insertInto('po_rep_indexer_run')
+        .values({
+          date: startDate.toISO(),
+          chainId: chainId.toString(),
           runner: runner,
           version: version,
-          blockStart: fromBlock,
-          blockEnd: toBlock,
+          blockStart: fromBlock.toString(),
+          blockEnd: toBlock.toString(),
           eventsCount: logs.length,
-        },
-      }),
-    ];
-
-    await this.prismaService.$transaction(operations);
+        })
+        .execute();
+    });
 
     // Sync exhaustion
     const keepRunning = recentHead !== toBlock;
