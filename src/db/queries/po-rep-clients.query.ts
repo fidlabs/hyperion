@@ -350,11 +350,6 @@ export interface CreatePoRepClientsFundsQueryParameters {
   epoch: number;
 }
 
-export interface CreatePoRepClientsListQueryParameters {
-  currentEpoch: number;
-  lowBalanceEpoch: number;
-}
-
 export interface CreatePoRepClientsStatisticsQueryParameters {
   periodStartEpoch: number | null;
   periodEndEpoch: number;
@@ -423,81 +418,6 @@ export function createPoRepClientsFundsQuery(
       eb.fn.sum('fc.amount').as('funds'),
     ])
     .groupBy(['ct.client', 'ct.token']);
-}
-
-export function createPoRepClientsListQuery(
-  qb: QueryBuilder,
-  { currentEpoch, lowBalanceEpoch }: CreatePoRepClientsListQueryParameters,
-) {
-  const accountsCTE = qb
-    .with('ct', createPoRepClientsTokensQuery(qb))
-    .selectFrom('ct')
-    .innerJoin('filecoin_pay_account_state as s', (join) =>
-      join.onRef('s.owner', '=', 'ct.client').onRef('s.token', '=', 'ct.token'),
-    )
-    .select((eb) => [
-      'ct.client',
-      's.funds',
-      's.lockupCurrent',
-      's.lockupRate',
-      's.lockupLastSettledAt',
-      sql<
-        string | null
-      >`${eb.ref('s.lockupLastSettledAt')} + div(${eb.ref('s.funds')} - ${eb.ref('s.lockupCurrent')}, nullif(${eb.ref('s.lockupRate')}, 0))`.as(
-        'funded_until_epoch',
-      ),
-    ]);
-
-  const walletsCTE = qb
-    .with('a', accountsCTE)
-    .selectFrom('a')
-    .select((eb) => {
-      const isSetUp = eb.or([
-        eb('a.funds', '>', '0'),
-        eb('a.lockupRate', '>', '0'),
-      ]);
-      const availableFunds = sql<string>`${eb.ref('a.funds')} - ${eb.ref('a.lockupCurrent')} - ${eb.ref('a.lockupRate')} * (least(${eb.ref('a.funded_until_epoch')}, ${currentEpoch}) - ${eb.ref('a.lockupLastSettledAt')})`;
-
-      return [
-        'a.client',
-        eb
-          .case()
-          .when(
-            eb.fn.agg<boolean>('bool_or', [
-              eb.and([isSetUp, eb(availableFunds, '=', '0')]),
-            ]),
-          )
-          .then(sql.lit('empty' as const))
-          .when(
-            eb.fn.agg<boolean>('bool_or', [
-              eb.and([
-                isSetUp,
-                eb('a.funded_until_epoch', '<', lowBalanceEpoch.toString()),
-              ]),
-            ]),
-          )
-          .then(sql.lit('low_balance' as const))
-          .when(eb.fn.agg<boolean>('bool_or', [isSetUp]))
-          .then(sql.lit('funded' as const))
-          .else(sql.lit('not_set_up' as const))
-          .end()
-          .as('wallet_status'),
-      ];
-    })
-    .groupBy('a.client');
-
-  return qb
-    .with('w', walletsCTE)
-    .selectFrom('po_rep_deal as d')
-    .leftJoin('w', 'w.client', 'd.client')
-    .select((eb) => [
-      'd.client as client_address',
-      eb.fn.count('d.manifestHash').distinct().as('datasets_count'),
-      eb.fn
-        .coalesce('w.wallet_status', sql.lit('not_set_up' as const))
-        .as('wallet_status'),
-    ])
-    .groupBy(['d.client', 'w.wallet_status']);
 }
 
 export function createPoRepClientsStatisticsQuery(

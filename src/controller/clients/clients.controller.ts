@@ -6,6 +6,7 @@ import {
   ApiOkResponse,
   ApiOperation,
 } from '@nestjs/swagger';
+import { ClientsService } from 'src/service/clients/clients.service';
 import { PoRepService } from 'src/service/po-rep/po-rep.service';
 import {
   ControllerBase,
@@ -28,6 +29,7 @@ import {
 export class ClientsController extends ControllerBase {
   constructor(
     @Inject(CACHE_MANAGER) private _cacheManager: Cache,
+    private readonly clientsService: ClientsService,
     private readonly poRepService: PoRepService,
   ) {
     super();
@@ -52,21 +54,11 @@ export class ClientsController extends ControllerBase {
   ): Promise<ClientsList> {
     this.validateServiceImplemented(service);
 
-    const fcss = await this.poRepService.getClients({
+    return this.clientsService.getClients({
+      service: service,
       limit: limit,
       page: page,
     });
-
-    return {
-      data: fcss.data.map((entry) => {
-        return {
-          clientAddress: entry.clientAddress,
-          datasetsCount: this.fcssOnly(entry.datasetsCount),
-          walletStatus: entry.walletStatus,
-        };
-      }),
-      pagination: fcss.pagination,
-    };
   }
 
   @Get('/statistics')
