@@ -31,7 +31,7 @@
     "@nestjs/schedule": "^6.0.0",
     "@nestjs/swagger": "^11.2.0",
     "@nestjs/terminus": "^11.0.0",
-    "@nestjs/typeorm": "^11.0.0",
+    "@nestjs/typeorm": "^11.0.3",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "@willsoto/nestjs-prometheus": "^7.0.0",
