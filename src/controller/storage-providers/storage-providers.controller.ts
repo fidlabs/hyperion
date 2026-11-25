@@ -26,7 +26,7 @@ import {
 @CacheTTL(1000 * 60 * 30) // 30 minutes
 export class StorageProvidersController extends ControllerBase {
   constructor(
-    @Inject(CACHE_MANAGER) private _cacheManager: Cache,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly poRepService: PoRepService,
   ) {
     super();

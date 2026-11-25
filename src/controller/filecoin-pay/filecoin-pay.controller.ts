@@ -22,7 +22,7 @@ import { ControllerBase } from '../base/controller-base';
 import { PaginationInfoRequest } from '../base/types.controller-base';
 import {
   FilecoinPayPayment,
-  FilecoinPayRail,
+  GetFilecoinPayRailResponse,
   GetFilecoinPayRailPaymentsResponse,
   GetFilecoinPayRailsResponse,
 } from './types.filecoin-pay';
@@ -131,7 +131,7 @@ export class FilecoinPayController extends ControllerBase {
   })
   @ApiOkResponse({
     description: 'FilecoinPay payment rail with given ID',
-    type: FilecoinPayRail,
+    type: GetFilecoinPayRailResponse,
   })
   @ApiBadRequestResponse({
     description: 'Invalid rail id was provided',
@@ -142,7 +142,7 @@ export class FilecoinPayController extends ControllerBase {
   @CacheTTL(1000 * 60) // 1 minute
   public async getRailById(
     @Param('railId', BigIntTransform) railId: bigint,
-  ): Promise<FilecoinPayRail> {
+  ): Promise<GetFilecoinPayRailResponse> {
     const rail = await this.prismaService.filecoin_pay_rail.findFirst({
       where: {
         railId: railId,
