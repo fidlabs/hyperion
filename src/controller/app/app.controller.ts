@@ -56,6 +56,19 @@ export class AppController extends HealthIndicator {
     }
   }
 
+  // Third-party services and scheduled jobs. Kept apart from /health, which the
+  // load balancer uses to decide whether to replace the container: restarting
+  // does not fix a cid.contact outage or a failed job run.
+  @Get('/health/dependencies')
+  @HealthCheck({ noCache: true })
+  @CacheTTL(1) // disable cache
+  public async getDependenciesHealth(): Promise<HealthCheckResult> {
+    return {
+      ...(await this._getDependenciesHealth()),
+      details: undefined,
+    };
+  }
+
   private async _getHealthMetadata(): Promise<HealthIndicatorResult> {
     return this.getStatus('app', true, {
       appStartTime: this.appStartTime,
@@ -103,12 +116,19 @@ export class AppController extends HealthIndicator {
     // prettier-ignore
     return this.healthCheckService.check([
       () => this._getHealthMetadata(),
-      () => this._httpPingCheck('cid.contact', 'https://cid.contact/health'),
-      () => this._httpPingCheckGlifApi(),
       () => this.typeOrmHealthIndicator.pingCheck('database', {
         connection: this.postgresService.pool,
         timeout: 5000,
       }),
+    ]);
+  }
+
+  @Cacheable({ ttl: 1000 * 10 }) // 10 seconds
+  private async _getDependenciesHealth(): Promise<HealthCheckResult> {
+    // prettier-ignore
+    return this.healthCheckService.check([
+      () => this._httpPingCheck('cid.contact', 'https://cid.contact/health'),
+      () => this._httpPingCheckGlifApi(),
       () => this.ipniAdvertisementFetcherJobService.getHealth(),
       () => this.ipniReportingDailyRunnerService.getHealth(),
     ]);
