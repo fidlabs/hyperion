@@ -130,6 +130,18 @@ export abstract class AbstractPoRepIndexerRunner<
   }
 
   public async execute() {
+    // A loop rather than recursion: with recursion every earlier batch's logs
+    // and changes stayed referenced until the whole catch-up had finished.
+    let keepRunning = true;
+
+    while (keepRunning) {
+      keepRunning = await this.executeBatch();
+    }
+  }
+
+  // Indexes a single batch of blocks. Returns true if there may be more to
+  // index.
+  private async executeBatch(): Promise<boolean> {
     const startDate = DateTime.now().toUTC();
     const chainId = BigInt(this.configService.get('PO_REP_CHAIN_ID'));
     const runner = this.getName();
@@ -182,7 +194,7 @@ export abstract class AbstractPoRepIndexerRunner<
     if (fromBlock > maxToBlock) {
       // Return if already indexed to finalized tipset
       this.logger.log('Nothing to index.');
-      return;
+      return false;
     }
 
     // Ending epoch selection
@@ -242,10 +254,7 @@ export abstract class AbstractPoRepIndexerRunner<
         : `Finished indexing ${logs.length} logs.`,
     );
 
-    if (keepRunning) {
-      // keep indexing if we havent synced up
-      await this.execute();
-    }
+    return keepRunning;
   }
 
   protected getArchiveNodeThreshold(): bigint {
