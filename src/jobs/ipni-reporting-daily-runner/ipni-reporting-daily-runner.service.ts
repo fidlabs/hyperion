@@ -41,7 +41,8 @@ export class IpniReportingDailyRunnerService extends HealthIndicator {
     throw new HealthCheckError('Healthcheck failed', result);
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  // Once a day, an hour after the IPNI advertisement fetcher job.
+  @Cron(CronExpression.EVERY_DAY_AT_4PM)
   public async runIPNIReportingDailyRunnerJob() {
     if (!this.jobInProgress) {
       this.jobInProgress = true;
