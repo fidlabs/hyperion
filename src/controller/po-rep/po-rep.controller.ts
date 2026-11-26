@@ -32,6 +32,8 @@ import {
   PoRepOnboardedDataHistoryParameters,
   PoRepProviderComplianceStatistics,
   PoRepProviderEconomicsStatistics,
+  PoRepProvidersList,
+  PoRepProvidersListParameters,
   PoRepProviderStorageStatistics,
   PoRepSLIComplianceHistoryEntry,
   PoRepSLIComplianceHistoryParameters,
@@ -65,6 +67,22 @@ export class PoRepController extends ControllerBase {
     @Query() query: PoRepDealsListParameters,
   ): Promise<PoRepDealsList> {
     return this.poRepService.getDeals(query);
+  }
+
+  @Get('/providers')
+  @ApiOperation({
+    summary: 'Get list of storage providers participating in PoRep market',
+  })
+  @ApiOkResponse({
+    type: PoRepProvidersList,
+  })
+  @ApiBadRequestResponse({
+    description: 'Query parameters validation error',
+  })
+  public getProvidersList(
+    @Query() query: PoRepProvidersListParameters,
+  ): Promise<PoRepProvidersList> {
+    return this.poRepService.getProvidersList(query);
   }
 
   @Get('/onboarded-data-history')
