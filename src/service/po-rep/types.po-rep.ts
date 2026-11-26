@@ -417,6 +417,86 @@ export class PoRepDealsList {
   pagination: PaginationMetadata;
 }
 
+// Providers list
+export class PoRepProvidersListParameters extends PaginationParameters {
+  @ApiPropertyOptional({
+    description:
+      'Optional filter by storage provider id, if provided then only that provider will be returned',
+    type: 'string',
+    required: false,
+  })
+  @IsOptional()
+  @IsF0IdInput()
+  providerId?: F0IdInput;
+
+  @ApiPropertyOptional({
+    description: `Set to true to show active providers only, or to false to show
+      paused or blocked providers only. Both are returned by default.`,
+    required: false,
+  })
+  @IsOptional()
+  @IsBooleanString()
+  active?: 'true' | 'false';
+}
+
+export class PoRepProvidersListEntry {
+  @ApiProperty({
+    description: 'Storage provider ID',
+  })
+  providerId: string;
+
+  @ApiProperty({
+    description: 'Flag telling if provider is paused',
+  })
+  paused: boolean;
+
+  @ApiProperty({
+    description: 'Flag telling if provider is blocked',
+  })
+  blocked: boolean;
+
+  @ApiProperty({
+    description: 'Total space available for the provider, in bytes',
+  })
+  availableBytes: string;
+
+  @ApiProperty({
+    description: 'Space committed to deals, in bytes',
+  })
+  committedBytes: string;
+
+  @ApiProperty({
+    description: 'Space allocated to not yet accepted deals, in bytes',
+  })
+  pendingBytes: string;
+
+  @ApiProperty({
+    description: `Count of provider deals in ${PoRepDealState.ACCEPTED} or
+      ${PoRepDealState.ACTIVE} state`,
+  })
+  activeDealsCount: number;
+
+  @ApiProperty({
+    description: 'Block at which provider was registered',
+  })
+  registeredAtBlock: string;
+}
+
+export class PoRepProvidersList {
+  @ApiProperty({
+    description: `Providers sorted by registration block, descending. When not
+      filtered by activity, active providers are returned first.`,
+    type: [PoRepProvidersListEntry],
+  })
+  data: PoRepProvidersListEntry[];
+
+  @ApiProperty({
+    description: 'Pagination metadata',
+    type: PaginationMetadata,
+  })
+  pagination: PaginationMetadata;
+}
+
 // Onboarded data history
 export class PoRepOnboardedDataHistoryEntry {
   @ApiProperty({

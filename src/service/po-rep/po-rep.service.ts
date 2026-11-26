@@ -16,6 +16,7 @@ import {
 import { createPoRepDealsPaymentsHistoryQuery } from 'src/db/queries/po-rep-deals-payments-history.query';
 import { createPoRepDealsValueHistoryQuery } from 'src/db/queries/po-rep-deals-value-history.query';
 import { createPoRepDealsQuery } from 'src/db/queries/po-rep-deals.query';
+import { createPoRepProvidersQuery } from 'src/db/queries/po-rep-providers.query';
 import { createPoRepOnboardedDataHistoryQuery } from 'src/db/queries/po-rep-onboarded-data-history.query';
 import { createPoRepOnboardedDealsQuery } from 'src/db/queries/po-rep-onboarded-deals.query';
 import { createPoRepProviderEconomicsStatisticsQuery } from 'src/db/queries/po-rep-provider-economics-statistics.query';
@@ -72,6 +73,8 @@ import {
   PoRepProvidersHistoryEntry,
   PoRepProvidersSlaHistory,
   PoRepProvidersStatistics,
+  PoRepProvidersList,
+  PoRepProvidersListParameters,
   PoRepProviderStorageStatistics,
   PoRepReturningClientsHistoryEntry,
   PoRepSLIComplianceHistoryEntry,
@@ -270,6 +273,61 @@ export class PoRepService {
     });
 
     return results.map((result) => F0Id.from(result.providerId));
+  }
+
+  public async getProvidersList({
+    providerId = null,
+    active,
+    limit = 0,
+    page = 1,
+  }: PoRepProvidersListParameters): Promise<PoRepProvidersList> {
+    const activeFilter = stringToBool(active);
+    const baseQuery = createPoRepProvidersQuery(this.queryBuilder, {
+      providersIds: providerId,
+      active: activeFilter,
+    });
+    let resultsQuery =
+      activeFilter === null
+        ? baseQuery
+            .orderBy('p.paused', 'asc')
+            .orderBy('p.blocked', 'asc')
+            .orderBy('p.registeredAtBlock', 'desc')
+        : baseQuery.orderBy('p.registeredAtBlock', 'desc');
+
+    if (limit) {
+      resultsQuery = resultsQuery.limit(limit).offset((page - 1) * limit);
+    }
+
+    const [results, countResult] = await Promise.all([
+      resultsQuery.execute(),
+      this.queryBuilder
+        .selectFrom(baseQuery.as('p'))
+        .select((eb) => [eb.fn.countAll().as('count')])
+        .executeTakeFirstOrThrow(),
+    ]);
+
+    const totalCount = stringToNumber(countResult.count.toString()) ?? 0;
+
+    return {
+      data: results.map((result) => {
+        return {
+          providerId: F0Id.from(result.provider_id).toString(),
+          paused: result.paused,
+          blocked: result.blocked,
+          availableBytes: result.available_bytes,
+          committedBytes: result.committed_bytes,
+          pendingBytes: result.pending_bytes,
+          activeDealsCount:
+            stringToNumber(result.active_deals_count.toString()) ?? 0,
+          registeredAtBlock: result.registered_at_block,
+        };
+      }),
+      pagination: {
+        page: page,
+        pagesCount: limit ? Math.ceil(totalCount / limit) : 1,
+        totalCount: totalCount,
+      },
+    };
   }
 
   public async getProviderStorageStatistics(
