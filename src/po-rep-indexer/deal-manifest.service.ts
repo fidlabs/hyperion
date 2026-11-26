@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/db/prisma.service';
+import { stringToNumber } from 'src/utils/utils';
 import z from 'zod';
 import {
   DEAL_MANIFEST_NESTED_SCHEMA,
@@ -15,6 +16,11 @@ import {
   DealManifestPiece,
   DealManifestResult,
 } from './po-rep-indexer.types';
+
+// Manifest locations are chosen by whoever proposes the deal, so the fetch must
+// not be able to hang the indexer or exhaust memory.
+const MANIFEST_FETCH_TIMEOUT_MS = 30_000;
+const MANIFEST_MAX_BYTES = 10 * 1024 * 1024;
 
 @Injectable()
 export class DealManifestService {
@@ -100,6 +106,8 @@ export class DealManifestService {
 
     const response = await fetch(manifestLocation, {
       headers: [['Accept', 'application/json']],
+      // Covers the whole exchange, including reading the body.
+      signal: AbortSignal.timeout(MANIFEST_FETCH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -108,7 +116,7 @@ export class DealManifestService {
       );
     }
 
-    const json = await response.json();
+    const json = JSON.parse(await this.readBodyWithLimit(response));
     const manifestResult = DEAL_MANIFEST_SCHEMA.safeParse(json);
 
     if (!manifestResult.success) {
@@ -118,6 +126,32 @@ export class DealManifestService {
     }
 
     return manifestResult.data;
+  }
+
+  private async readBodyWithLimit(response: Response): Promise<string> {
+    const tooLargeError = () =>
+      new Error(
+        `Manifest at "${response.url}" is larger than ${MANIFEST_MAX_BYTES} bytes.`,
+      );
+
+    if (
+      stringToNumber(response.headers.get('content-length')) >
+      MANIFEST_MAX_BYTES
+    ) {
+      throw tooLargeError();
+    }
+
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+
+    // Leaving the loop early cancels the download.
+    for await (const chunk of response.body ?? []) {
+      size += chunk.byteLength;
+      if (size > MANIFEST_MAX_BYTES) throw tooLargeError();
+      chunks.push(chunk);
+    }
+
+    return Buffer.concat(chunks).toString('utf8');
   }
 
   public extractDealManifestPieces(
