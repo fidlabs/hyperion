@@ -8,7 +8,7 @@ on:
         required: false
         type: string
       commit_sha:
-        required: true
+        required: false
         type: string
 
 env:
@@ -16,10 +16,6 @@ env:
 
 jobs:
   build_and_push:
-    if: >-
-      github.event_name == 'release' ||
-      (github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -78,6 +74,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}},value=${{ inputs.version }},enable=${{ github.event_name == 'release' }}
             type=ref,event=pr
+            type=raw,value=main,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - name: Init tmp db
         run: npx prisma migrate reset --force --schema=./prisma/schema.prisma

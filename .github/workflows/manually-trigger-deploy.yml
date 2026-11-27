@@ -25,15 +25,23 @@ jobs:
   trigger-deploy:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
-    if: ${{ inputs.version != '' && (inputs.environment != 'production' || github.ref_name == 'main') }}
     steps:
+      - name: Require main branch for production
+        if: inputs.environment == 'production'
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != refs/heads/main ]; then
+            echo "::error::Production deploy can only be triggered from the main branch (got: $REF)."
+            exit 1
+          fi
       - name: Require a release version for production
         if: inputs.environment == 'production'
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          if [ "$VERSION" = main ]; then
-            echo "Enter a release version for production."
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Production requires a release version without v (e.g. 1.3.0), got: $VERSION"
             exit 1
           fi
       - name: Trigger ${{ inputs.environment }} deploy
