@@ -35,6 +35,8 @@ import {
   GetProviderStorageStatisticsResponse,
   GetSLIComplianceHistoryResponse,
   GetSLIComplianceHistoryRequest,
+  GetProvidersListResponse,
+  GetProvidersListRequest,
 } from 'src/service/po-rep/types.po-rep';
 
 import {
@@ -72,14 +74,14 @@ export class PoRepController extends ControllerBase {
     summary: 'Get list of storage providers participating in PoRep market',
   })
   @ApiOkResponse({
-    type: PoRepProvidersList,
+    type: GetProvidersListResponse,
   })
   @ApiBadRequestResponse({
     description: 'Query parameters validation error',
   })
   public getProvidersList(
-    @Query() query: PoRepProvidersListParameters,
-  ): Promise<PoRepProvidersList> {
+    @Query() query: GetProvidersListRequest,
+  ): Promise<GetProvidersListResponse> {
     return this.poRepService.getProvidersList(query);
   }
 

@@ -49,7 +49,6 @@ import { UrlFinderDealMeasurement } from '../url-finder/types.url-finder';
 import { UrlFinderService } from '../url-finder/url-finder.service';
 import {
   DealRailState,
-  PaginationParameters,
   PoRepClientsHistoryEntry,
   PoRepClientsRevenueConcentrationHistoryEntry,
   PoRepClientsStatistics,
@@ -80,6 +79,8 @@ import {
   GetSLIComplianceHistoryRequest,
   SLIComplianceHistoryResponseValue,
   PoRepSLIIndicator,
+  GetProvidersListRequest,
+  GetProvidersListResponse,
 } from './types.po-rep';
 import { ERC20TokenInfoService } from '../erc20-token-info/erc20-token-info.service';
 
@@ -279,7 +280,7 @@ export class PoRepService {
     active,
     limit = 0,
     page = 1,
-  }: PoRepProvidersListParameters): Promise<PoRepProvidersList> {
+  }: GetProvidersListRequest): Promise<GetProvidersListResponse> {
     const activeFilter = stringToBool(active);
     const baseQuery = createPoRepProvidersQuery(this.queryBuilder, {
       providersIds: providerId,

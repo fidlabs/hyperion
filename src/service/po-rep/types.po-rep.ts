@@ -418,7 +418,7 @@ export class GetPoRepDealsResponse {
 }
 
 // Providers list
-export class PoRepProvidersListParameters extends PaginationParameters {
+export class GetProvidersListRequest extends PaginationParameters {
   @ApiPropertyOptional({
     description:
       'Optional filter by storage provider id, if provided then only that provider will be returned',
@@ -482,7 +482,7 @@ export class PoRepProvidersListEntry {
   registeredAtBlock: string;
 }
 
-export class PoRepProvidersList {
+export class GetProvidersListResponse {
   @ApiProperty({
     description: `Providers sorted by registration block, descending. When not
       filtered by activity, active providers are returned first.`,
