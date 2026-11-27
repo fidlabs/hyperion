@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.3.0](https://github.com/fidlabs/hyperion/compare/v1.2.0...v1.3.0) (2026-11-27)
+
+
+### Features
+
+* storage providers list ([e164e59](https://github.com/fidlabs/hyperion/commit/e164e59cf55c08fe1360e239305a29572ee5904b))
+
+
+### Bug Fixes
+
+* index batches in a loop instead of recursing ([5f37596](https://github.com/fidlabs/hyperion/commit/5f375965242d6c62dab03eb907d50c0d239e3fd6))
+* retry indexer batches with smaller size on RPC timeout ([63684c5](https://github.com/fidlabs/hyperion/commit/63684c565e461becd54ab37fd5f8ef50e0a01e2c))
+
+
+### Refactoring
+
+* generate Filecoin Pay ids in the database ([c656070](https://github.com/fidlabs/hyperion/commit/c656070b8aa748ada8feeaedc40c3b16a585bb63))
+* prepare clients list for multiple services ([580a910](https://github.com/fidlabs/hyperion/commit/580a910b7dc8564724ac9bca0c9a243e45550ad4))
+* save indexed data in Kysely transactions ([2535109](https://github.com/fidlabs/hyperion/commit/25351096cf9bc774d2effd62819ba55adcd95d70))
+
+
+### Maintenance
+
+* deleted unnecessary comments ([7967f4e](https://github.com/fidlabs/hyperion/commit/7967f4e80ea13012ff2784f8589c7ffa3700867d))
+
 ## [1.2.0](https://github.com/fidlabs/hyperion/compare/v1.1.1...v1.2.0) (2026-11-25)
 
 
