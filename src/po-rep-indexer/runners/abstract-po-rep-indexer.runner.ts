@@ -130,8 +130,6 @@ export abstract class AbstractPoRepIndexerRunner<
   }
 
   public async execute() {
-    // A loop rather than recursion: with recursion every earlier batch's logs
-    // and changes stayed referenced until the whole catch-up had finished.
     let keepRunning = true;
 
     while (keepRunning) {
@@ -139,8 +137,6 @@ export abstract class AbstractPoRepIndexerRunner<
     }
   }
 
-  // Indexes a single batch of blocks. Returns true if there may be more to
-  // index.
   private async executeBatch(): Promise<boolean> {
     const startDate = DateTime.now().toUTC();
     const chainId = BigInt(this.configService.get('PO_REP_CHAIN_ID'));
