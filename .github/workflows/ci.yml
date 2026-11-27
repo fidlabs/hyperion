@@ -2,19 +2,14 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
-  workflow_call:
-    inputs:
-      commit_sha:
-        required: false
-        type: string
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -22,11 +17,22 @@ permissions:
 jobs:
   quality:
     uses: ./.github/workflows/code-check.yml
-    with:
-      commit_sha: ${{ inputs.commit_sha }}
 
   check-db:
     needs: quality
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      github.event.pull_request.user.type != 'Bot')
     uses: ./.github/workflows/check-db.yml
-    with:
-      commit_sha: ${{ inputs.commit_sha }}
+
+  build-and-publish:
+    needs: quality
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.type != 'Bot')
+    uses: ./.github/workflows/build-docker-image.yml
+    secrets: inherit
