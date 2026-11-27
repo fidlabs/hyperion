@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.1](https://github.com/fidlabs/hyperion/compare/v1.3.0...v1.3.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* add a timeout and size limit to deal manifest fetches ([090cac9](https://github.com/fidlabs/hyperion/commit/090cac93474c0bedd9303d28b8f6253e8b88789d))
+* change the time IPNI reporting daily job runs ([c9d6b98](https://github.com/fidlabs/hyperion/commit/c9d6b98f0a6bee48478dfaa6080d27f7682be22e))
+* handle errors on idle database connections instead of crashing ([f30168b](https://github.com/fidlabs/hyperion/commit/f30168b3206d9326947ae9eebb487cd1292effc5))
+* keep third-party and job checks out of the load balancer health check ([76032f8](https://github.com/fidlabs/hyperion/commit/76032f89bac63f06af43718ff83082c05bf27ebd))
+* log one JSON line per entry in production and exit on fatal errors ([16fb707](https://github.com/fidlabs/hyperion/commit/16fb7079695f5d3cd018f9a4a3a81c23bab787fc))
+* run the IPNI reporting daily job once a day ([47f7777](https://github.com/fidlabs/hyperion/commit/47f7777eff16251d1484cb527a2f29fe01b813a1))
+
+
+### CI
+
+* disable image build for PRs created by the dependabot ([01e3aaf](https://github.com/fidlabs/hyperion/commit/01e3aaff67887da7f612be405375c3271d0cb9e9))
+* limit the number of GHA calls ([420858f](https://github.com/fidlabs/hyperion/commit/420858f8a9a74e3c550ebb61dfc33f994704eb99))
+
 ## [1.3.0](https://github.com/fidlabs/hyperion/compare/v1.2.0...v1.3.0) (2026-11-27)
 
 
