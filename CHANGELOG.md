@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/fidlabs/hyperion/compare/v1.3.0...v1.3.1) (2026-11-27)
+
+
+### CI
+
+* disable image build for PRs created by the dependabot ([01e3aaf](https://github.com/fidlabs/hyperion/commit/01e3aaff67887da7f612be405375c3271d0cb9e9))
+* limit the number of GHA calls ([420858f](https://github.com/fidlabs/hyperion/commit/420858f8a9a74e3c550ebb61dfc33f994704eb99))
+
 ## [1.3.0](https://github.com/fidlabs/hyperion/compare/v1.2.0...v1.3.0) (2026-11-27)
 
 
