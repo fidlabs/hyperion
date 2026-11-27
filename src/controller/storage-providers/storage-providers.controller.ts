@@ -26,7 +26,7 @@ import {
 @CacheTTL(1000 * 60 * 30) // 30 minutes
 export class StorageProvidersController extends ControllerBase {
   constructor(
-    @Inject(CACHE_MANAGER) private _cacheManager: Cache,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly poRepService: PoRepService,
   ) {
     super();
@@ -92,7 +92,7 @@ export class StorageProvidersController extends ControllerBase {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getProvidersHistory(
-      this.getStatisticsPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.start,
       windowSize,
     );
 
@@ -131,7 +131,7 @@ export class StorageProvidersController extends ControllerBase {
     this.validateServiceImplemented(service);
 
     const fcss = await this.poRepService.getProvidersSlaHistory(
-      this.getStatisticsPeriods(period).current.periodStart,
+      this.getStatisticsPeriods(period).current.start,
       windowSize,
     );
 
@@ -171,15 +171,15 @@ export class StorageProvidersController extends ControllerBase {
   ): Promise<StorageProvidersEarningsAgainstSla> {
     this.validateServiceImplemented(service);
 
-    const { periodStart, periodEnd } = this.getStatisticsPeriods('30d').current;
+    const { start, end } = this.getStatisticsPeriods('30d').current;
     const fcss = await this.poRepService.getProvidersEarningsAgainstSla(
-      periodStart,
-      periodEnd,
+      start,
+      end,
     );
 
     return {
-      periodStart: periodStart.toJSDate(),
-      periodEnd: periodEnd.toJSDate(),
+      periodStart: start.toJSDate(),
+      periodEnd: end.toJSDate(),
       slaTarget: this.fcssOnlyWithoutTotal(fcss.slaTarget),
       providers: fcss.providers.map((provider) => {
         return {
@@ -191,17 +191,14 @@ export class StorageProvidersController extends ControllerBase {
   }
 
   private async getPeriodStatistics({
-    periodStart,
-    periodEnd,
+    start,
+    end,
   }: StatisticsPeriodBoundaries): Promise<StorageProvidersPeriodStatistics> {
-    const fcss = await this.poRepService.getProvidersStatistics(
-      periodStart,
-      periodEnd,
-    );
+    const fcss = await this.poRepService.getProvidersStatistics(start, end);
 
     return {
-      periodStart: periodStart !== null ? periodStart.toJSDate() : null,
-      periodEnd: periodEnd.toJSDate(),
+      periodStart: start !== null ? start.toJSDate() : null,
+      periodEnd: end.toJSDate(),
       totalProvidersCount: this.fcssOnly(fcss.totalProvidersCount),
       activeProvidersCount: this.fcssOnly(fcss.activeProvidersCount),
       earningsUSD: this.fcssOnly(fcss.earningsUSD),

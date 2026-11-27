@@ -1,30 +1,40 @@
 import { Cache, CACHE_MANAGER, CacheTTL } from '@nestjs/cache-manager';
+import { dateToFilecoinBlockHeight } from 'src/utils/utils';
+import { PoRepService } from 'src/service/po-rep/po-rep.service';
+import { uniq } from 'lodash';
+import { PrismaService } from 'src/db/prisma.service';
+import { ERC20TokenInfoService } from 'src/service/erc20-token-info/erc20-token-info.service';
+import { ControllerBase } from '../base/controller-base';
+import {
+  PaginationInfoRequest,
+  StatisticsRequest,
+} from '../base/types.controller-base';
+
 import {
   BadRequestException,
   Controller,
   Get,
   Inject,
   NotFoundException,
+  NotImplementedException,
   Param,
   PipeTransform,
   Query,
 } from '@nestjs/common';
+
 import {
   ApiBadRequestResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
 } from '@nestjs/swagger';
-import { uniq } from 'lodash';
-import { PrismaService } from 'src/db/prisma.service';
-import { ERC20TokenInfoService } from 'src/service/erc20-token-info/erc20-token-info.service';
-import { ControllerBase } from '../base/controller-base';
-import { PaginationInfoRequest } from '../base/types.controller-base';
+
 import {
   FilecoinPayPayment,
-  FilecoinPayRail,
+  GetFilecoinPayRailResponse,
   GetFilecoinPayRailPaymentsResponse,
   GetFilecoinPayRailsResponse,
+  GetTransactionsCountResponse,
 } from './types.filecoin-pay';
 
 class BigIntTransform implements PipeTransform<string, bigint> {
@@ -44,6 +54,7 @@ export class FilecoinPayController extends ControllerBase {
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly prismaService: PrismaService,
     private readonly tokenInfoService: ERC20TokenInfoService,
+    private readonly poRepService: PoRepService,
   ) {
     super();
   }
@@ -131,7 +142,7 @@ export class FilecoinPayController extends ControllerBase {
   })
   @ApiOkResponse({
     description: 'FilecoinPay payment rail with given ID',
-    type: FilecoinPayRail,
+    type: GetFilecoinPayRailResponse,
   })
   @ApiBadRequestResponse({
     description: 'Invalid rail id was provided',
@@ -142,7 +153,7 @@ export class FilecoinPayController extends ControllerBase {
   @CacheTTL(1000 * 60) // 1 minute
   public async getRailById(
     @Param('railId', BigIntTransform) railId: bigint,
-  ): Promise<FilecoinPayRail> {
+  ): Promise<GetFilecoinPayRailResponse> {
     const rail = await this.prismaService.filecoin_pay_rail.findFirst({
       where: {
         railId: railId,
@@ -260,5 +271,90 @@ export class FilecoinPayController extends ControllerBase {
       query,
       totalCount,
     );
+  }
+
+  @Get('/transactions/count')
+  @ApiOperation({
+    summary: 'Get number of Filecoin Pay payment transactions',
+  })
+  @ApiOkResponse({
+    type: GetTransactionsCountResponse,
+  })
+  @CacheTTL(1000 * 60 * 5)
+  public async getTransactionsCount(
+    @Query() { period = '30d', service = 'all' }: StatisticsRequest,
+  ): Promise<GetTransactionsCountResponse> {
+    if (service === 'fwss') {
+      throw new NotImplementedException(
+        'Statistics for FWSS are not implemented yet',
+      );
+    }
+
+    const isTestnet = this.poRepService.isTestnet();
+    const periods = this.getStatisticsPeriods(period);
+
+    const currentFcssCount =
+      await this.prismaService.filecoin_pay_payment.count({
+        where: {
+          createdAtBlock: {
+            ...(periods.current.start && {
+              gte: BigInt(
+                dateToFilecoinBlockHeight(periods.current.start.toJSDate(), {
+                  testnet: isTestnet,
+                }),
+              ),
+            }),
+            lt: BigInt(
+              dateToFilecoinBlockHeight(periods.current.end.toJSDate(), {
+                testnet: isTestnet,
+              }),
+            ),
+          },
+        },
+      });
+
+    const currentFwssCount = null;
+
+    const previousFcssCount = periods.previous
+      ? await this.prismaService.filecoin_pay_payment.count({
+          where: {
+            createdAtBlock: {
+              gte: BigInt(
+                dateToFilecoinBlockHeight(periods.previous.start.toJSDate(), {
+                  testnet: isTestnet,
+                }),
+              ),
+              lt: BigInt(
+                dateToFilecoinBlockHeight(periods.previous.end.toJSDate(), {
+                  testnet: isTestnet,
+                }),
+              ),
+            },
+          },
+        })
+      : null;
+
+    const previousFwssCount = null;
+
+    return {
+      period: period,
+      service: service,
+      current: {
+        periodStart: periods.current.start?.toJSDate() ?? null,
+        periodEnd: periods.current.end.toJSDate(),
+        fcss: currentFcssCount,
+        fwss: currentFwssCount,
+        total: (currentFcssCount ?? 0) + (currentFwssCount ?? 0),
+      },
+      previous: periods.previous
+        ? {
+            periodStart: periods.previous.start?.toJSDate() ?? null,
+            periodEnd: periods.previous.end.toJSDate() ?? null,
+            fcss: previousFcssCount,
+            fwss: previousFwssCount,
+            total: (previousFcssCount ?? 0) + (previousFwssCount ?? 0),
+          }
+        : null,
+    };
   }
 }
