@@ -13,7 +13,7 @@ import {
   type TransactionContext,
 } from 'src/db';
 import { compareNullableNumber, maxBigInt } from 'src/utils/utils';
-import { AbiEvent, Address, GetLogsReturnType, Log } from 'viem';
+import { AbiEvent, Address, GetLogsReturnType, Log, TimeoutError } from 'viem';
 import { DealManifestService } from '../deal-manifest.service';
 import {
   ARCHIVE_NODE_CLIENT,
@@ -133,11 +133,37 @@ export abstract class AbstractPoRepIndexerRunner<
     let keepRunning = true;
 
     while (keepRunning) {
-      keepRunning = await this.executeBatch();
+      keepRunning = await this.executeBatchWithTimeoutRetries(
+        this.getBatchBlockSize(),
+      );
     }
   }
 
-  private async executeBatch(): Promise<boolean> {
+  private async executeBatchWithTimeoutRetries(
+    batchBlockSize: bigint,
+  ): Promise<boolean> {
+    try {
+      return await this.executeBatch(batchBlockSize);
+    } catch (error) {
+      if (!(error instanceof TimeoutError)) {
+        throw error;
+      }
+
+      const nextBatchBlockSize = batchBlockSize / 2n;
+
+      if (nextBatchBlockSize < 1n) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `Request timed out. Retrying with batch size of ${nextBatchBlockSize.toString()} blocks.`,
+      );
+
+      return this.executeBatchWithTimeoutRetries(nextBatchBlockSize);
+    }
+  }
+
+  private async executeBatch(batchBlockSize: bigint): Promise<boolean> {
     const startDate = DateTime.now().toUTC();
     const chainId = BigInt(this.configService.get('PO_REP_CHAIN_ID'));
     const runner = this.getName();
@@ -195,7 +221,6 @@ export abstract class AbstractPoRepIndexerRunner<
 
     // Ending epoch selection
     const blockDifference = maxToBlock - fromBlock;
-    const batchBlockSize = this.getBatchBlockSize();
     const toBlock =
       blockDifference >= batchBlockSize
         ? fromBlock + batchBlockSize - 1n
